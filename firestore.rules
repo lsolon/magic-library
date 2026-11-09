@@ -17,10 +17,22 @@ service cloud.firestore {
     // a assinatura só deve ser gravada por servidor/admin.
     match /users/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      // Avatar: só figuras prontas do DiceBear (sem foto nem URL livre).
+      // Mantenha o padrão igual a AVATAR_PATTERN em src/lib/avatars.ts.
+      function avatarOk(d) {
+        return !('avatarUrl' in d)
+          || (d.avatarUrl is string
+              && d.avatarUrl.matches('^https://api\\.dicebear\\.com/7\\.x/(bottts|adventurer|fun-emoji|thumbs|big-smile|lorelei)/svg\\?seed=[A-Za-z0-9_-]{1,40}$'));
+      }
       allow create: if signedIn() && request.auth.uid == userId
-        && !request.resource.data.keys().hasAny(['isSubscribed']);
+        && !request.resource.data.keys().hasAny(['isSubscribed'])
+        && avatarOk(request.resource.data);
       allow update: if signedIn() && request.auth.uid == userId
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSubscribed', 'createdAt']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSubscribed', 'createdAt'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl'])
+            || avatarOk(request.resource.data))
+        // savedAvatars (legado do gerador de avatar) não pode mais ser gravado
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['savedAvatars']);
       allow delete: if false;
     }
 

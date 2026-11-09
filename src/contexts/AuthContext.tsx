@@ -1,3 +1,4 @@
+import { defaultAvatarFor, safeAvatar } from '../lib/avatars';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { 
   onAuthStateChanged, 
@@ -99,21 +100,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             if (data.avatarUrl) {
-              setUserAvatar(data.avatarUrl);
+              setUserAvatar(safeAvatar(data.avatarUrl, currentUser.uid));
             } else {
-              setUserAvatar(currentUser.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + currentUser.uid);
+              setUserAvatar(defaultAvatarFor(currentUser.uid));
             }
           } else {
             setNeedsProfileSetup(true);
             setIsTrialExpired(false);
             setIsSubscribed(false);
             setTrialDaysLeft(30);
-            setUserAvatar(currentUser.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + currentUser.uid);
+            setUserAvatar(defaultAvatarFor(currentUser.uid));
           }
           setLoading(false);
         }, (err) => {
           console.error("Error watching user doc:", err);
-          setUserAvatar(currentUser.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + currentUser.uid);
+          setUserAvatar(defaultAvatarFor(currentUser.uid));
           setLoading(false);
         });
       } else {
@@ -134,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
-      const defaultAvatar = user.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + user.uid;
+      const defaultAvatar = defaultAvatarFor(user.uid);
       await setDoc(userRef, {
         displayName: displayName || user.displayName || 'Novo(a) Explorador(a) de Mundos',
         realName: realName || user.displayName || 'Explorador(a) de Mundos',

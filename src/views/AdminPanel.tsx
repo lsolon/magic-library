@@ -1,3 +1,4 @@
+import { safeAvatar } from '../lib/avatars';
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -102,7 +103,7 @@ export default function AdminPanel() {
                   <div className="font-bold text-on-surface-variant w-8 text-center mr-2 opacity-50">
                     #{index + 1}
                   </div>
-                  <img src={u.avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + u.id} alt={u.displayName} className="w-14 h-14 rounded-xl border-2 border-primary/20 bg-surface object-cover mr-4" />
+                  <img src={safeAvatar(u.avatarUrl, u.id)} alt={u.displayName} className="w-14 h-14 rounded-xl border-2 border-primary/20 bg-surface object-cover mr-4" />
                   <div className="flex-1">
                     <h3 className="font-bold text-on-surface text-lg">{u.displayName}</h3>
                     <div className="text-sm font-medium text-on-surface-variant flex items-center gap-4 mt-1">

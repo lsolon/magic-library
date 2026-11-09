@@ -5,9 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
 import { VersionBadge } from '../components/VersionBadge';
-import { AvatarGenerator } from '../components/AvatarGenerator';
+import { AVATAR_PRESETS, safeAvatar } from '../lib/avatars';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { updateProfile as updateAuthProfile } from 'firebase/auth';
 import { db } from '../lib/firebase';
 import { syncUserGamificationStats, calculateBadges, BadgeDef, GamificationStats } from '../lib/gamification';
 import { clearAllUserData } from '../lib/dataUtils';
@@ -27,7 +26,6 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [error, setError] = useState('');
-  const [savedAvatars, setSavedAvatars] = useState<string[]>([]);
   const [isClearingData, setIsClearingData] = useState(false);
 
   const handleClearUserData = async () => {
@@ -59,8 +57,7 @@ export default function Profile() {
       if (!user) return;
       setDisplayName(user.displayName || '');
       setRealName(user.displayName || '');
-      const defaultAvatar = user.photoURL || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + user.uid;
-      setAvatarUrl(defaultAvatar);
+      setAvatarUrl(safeAvatar(null, user.uid));
 
       try {
         // Sync & calculate latest gamification stats from Firestore user_books
@@ -74,15 +71,10 @@ export default function Profile() {
           const data = userSnap.data();
           if (data.displayName) setDisplayName(data.displayName);
           if (data.realName) setRealName(data.realName);
-          if (data.avatarUrl) setAvatarUrl(data.avatarUrl);
+          setAvatarUrl(safeAvatar(data.avatarUrl, user.uid));
           if (data.magicalTitle) setMagicalTitle(data.magicalTitle);
           if (data.favoriteGenres) setFavoriteGenres(data.favoriteGenres);
           if (data.bio) setBio(data.bio);
-          if (data.savedAvatars && Array.isArray(data.savedAvatars)) {
-            setSavedAvatars(data.savedAvatars);
-          } else {
-            setSavedAvatars([defaultAvatar]);
-          }
         }
       } catch (err) {
         console.error("Error fetching profile:", err);
@@ -90,61 +82,6 @@ export default function Profile() {
     }
     fetchUserData();
   }, [user]);
-
-  const handleSelectAvatar = async (url: string) => {
-    setAvatarUrl(url);
-    if (!user) return;
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      const data = userSnap.data() || {};
-      const currentSaved = data.savedAvatars || savedAvatars;
-      const updatedSaved = [url, ...currentSaved.filter((u: string) => u !== url)].slice(0, 16);
-
-      setSavedAvatars(updatedSaved);
-      await setDoc(userRef, {
-        avatarUrl: url,
-        savedAvatars: updatedSaved,
-        updatedAt: new Date()
-      }, { merge: true });
-      setSuccessMessage('Avatar definido e salvo com sucesso no perfil! ✨');
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err) {
-      console.error('Error auto-saving avatar:', err);
-    }
-  };
-
-  const handleSaveAvatar = async (url: string) => {
-    if (!user) return;
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      const updatedSaved = [url, ...savedAvatars.filter(u => u !== url)].slice(0, 16);
-      setSavedAvatars(updatedSaved);
-      await setDoc(userRef, {
-        savedAvatars: updatedSaved,
-        updatedAt: new Date()
-      }, { merge: true });
-    } catch (err) {
-      console.error('Error saving avatar to list:', err);
-    }
-  };
-
-  const handleDeleteSavedAvatar = async (url: string) => {
-    if (!user) return;
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      const updatedSaved = savedAvatars.filter(u => u !== url);
-      setSavedAvatars(updatedSaved);
-      await setDoc(userRef, {
-        savedAvatars: updatedSaved,
-        updatedAt: new Date()
-      }, { merge: true });
-      setSuccessMessage('Avatar removido da lista.');
-      setTimeout(() => setSuccessMessage(''), 2500);
-    } catch (err) {
-      console.error('Error deleting saved avatar:', err);
-    }
-  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,21 +91,10 @@ export default function Profile() {
     setSuccessMessage('');
 
     try {
-      // Update Firebase Auth profile safely (only if not a huge base64 data URL)
-      if (avatarUrl && !avatarUrl.startsWith('data:') && avatarUrl.length < 2000) {
-        try {
-          await updateAuthProfile(user, {
-            photoURL: avatarUrl
-          });
-        } catch (authErr) {
-          console.warn("Could not update auth photoURL:", authErr);
-        }
-      }
-
       // Update Firestore user document
       const userRef = doc(db, 'users', user.uid);
       await setDoc(userRef, {
-        avatarUrl,
+        avatarUrl: safeAvatar(avatarUrl, user.uid),
         realName,
         magicalTitle,
         favoriteGenres,
@@ -186,14 +112,7 @@ export default function Profile() {
     }
   };
 
-  const presetAvatars = [
-    'https://api.dicebear.com/7.x/bottts/svg?seed=' + (user?.uid || 'magic1'),
-    'https://api.dicebear.com/7.x/bottts/svg?seed=wizard',
-    'https://api.dicebear.com/7.x/bottts/svg?seed=dragon',
-    'https://api.dicebear.com/7.x/bottts/svg?seed=phoenix',
-    'https://api.dicebear.com/7.x/bottts/svg?seed=griffin',
-    'https://api.dicebear.com/7.x/bottts/svg?seed=elven'
-  ];
+  const presetAvatars = AVATAR_PRESETS;
 
   return (
     <div className="min-h-screen bg-background text-on-background pb-[100px] md:pb-0 relative overflow-x-hidden">
@@ -240,7 +159,7 @@ export default function Profile() {
               
               <div className="relative z-10 mt-6 w-28 h-28 rounded-full overflow-hidden border-4 border-surface shadow-xl bg-primary-container mb-4 group">
                 <img 
-                  src={avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + user?.uid} 
+                  src={safeAvatar(avatarUrl, user?.uid)} 
                   alt="Avatar" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
@@ -312,8 +231,8 @@ export default function Profile() {
               <h4 className="font-headline-sm text-primary mb-3 flex items-center gap-2">
                 <Camera className="w-4 h-4" /> Avatares Mágicos Sugeridos
               </h4>
-              <p className="font-body-xs text-on-surface-variant mb-4">Escolha um avatar rápido:</p>
-              <div className="grid grid-cols-3 gap-3">
+              <p className="font-body-xs text-on-surface-variant mb-4">Escolha o seu avatar e depois toque em Salvar Alterações:</p>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
                 {presetAvatars.map((preset, idx) => (
                   <button
                     key={idx}
@@ -397,17 +316,6 @@ export default function Profile() {
               </div>
 
               <div>
-                <label className="block font-label-md text-on-surface mb-2">URL do Avatar / Imagem de Perfil</label>
-                <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-surface border border-surface-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md transition-all"
-                  placeholder="https://exemplo.com/avatar.png"
-                />
-              </div>
-
-              <div>
                 <label className="block font-label-md text-on-surface mb-2">Título Mágico</label>
                 <select
                   value={magicalTitle}
@@ -456,15 +364,6 @@ export default function Profile() {
                 </button>
               </div>
             </form>
-
-            {/* Avatar Generator Tool */}
-            <AvatarGenerator
-              currentAvatarUrl={avatarUrl}
-              savedAvatars={savedAvatars}
-              onSelectAvatar={handleSelectAvatar}
-              onSaveAvatar={handleSaveAvatar}
-              onDeleteSavedAvatar={handleDeleteSavedAvatar}
-            />
 
             {/* Clear / Reset Data Section */}
             <div className="bg-surface-container-lowest rounded-2xl p-6 border-2 border-error/30 shadow-lg space-y-4">
