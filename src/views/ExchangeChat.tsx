@@ -12,6 +12,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
+import { acceptLoan, declineLoan, cancelLoan, completeLoan, linkAcceptedLoans, ExchangeStatus } from '../lib/loans';
 import { CHAT_PRESETS, CHAT_PRESET_BY_ID, CHAT_PRESET_GROUPS, systemMessageText, ChatPreset } from '../lib/chatPresets';
 
 interface Exchange {
@@ -25,7 +26,8 @@ interface Exchange {
   bookId: string;
   bookTitle: string;
   bookCoverUrl?: string;
-  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
+  status: ExchangeStatus;
+  borrowerLinked?: boolean;
   createdAt?: any;
 }
 
@@ -58,6 +60,11 @@ export default function ExchangeChat() {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // Aluno: liga empréstimos aprovados à própria estante
+  useEffect(() => {
+    if (user) linkAcceptedLoans(user.uid).catch(err => console.error('link loans', err));
+  }, [user]);
 
   // 1. Fetch user exchanges
   useEffect(() => {
@@ -193,24 +200,39 @@ export default function ExchangeChat() {
     return msg.text || ''; // mensagens antigas
   };
 
-  // Conclude exchange / Complete borrow
-  const handleCompleteExchange = async () => {
-    if (!selectedExchange) return;
-    if (!window.confirm(`Deseja confirmar a conclusão do empréstimo de "${selectedExchange.bookTitle}"?`)) return;
+  const isOwner = !!user && !!selectedExchange && selectedExchange.receiverId === user.uid;
+  const isBorrower = !!user && !!selectedExchange && selectedExchange.initiatorId === user.uid;
+  const [isActing, setIsActing] = useState(false);
 
+  const setStatusLocal = (status: ExchangeStatus) =>
+    setSelectedExchange(prev => prev ? { ...prev, status } : null);
+
+  const runAction = async (fn: () => Promise<void>, next: ExchangeStatus, okMsg?: string) => {
+    if (isActing) return;
+    setIsActing(true);
     try {
-      await updateDoc(doc(db, 'exchanges', selectedExchange.id), {
-        status: 'completed',
-        completedAt: serverTimestamp()
-      });
-
-      setSelectedExchange(prev => prev ? { ...prev, status: 'completed' } : null);
-      alert('Empréstimo concluído com sucesso! 🎉');
-    } catch (err) {
-      console.error('Error completing exchange:', err);
-      alert('Erro ao concluir empréstimo.');
+      await fn();
+      setStatusLocal(next);
+      if (okMsg) alert(okMsg);
+    } catch (err: any) {
+      console.error('Loan action error:', err);
+      alert(err?.message === 'BOOK_UNAVAILABLE'
+        ? 'Este livro não está mais disponível. Recuse o pedido.'
+        : 'Não foi possível concluir a ação. Tente novamente.');
+    } finally {
+      setIsActing(false);
     }
   };
+
+  const handleAccept = () => selectedExchange && user &&
+    runAction(() => acceptLoan(selectedExchange, selectedExchange.initiatorName), 'accepted', 'Pedido aceito! O livro agora está emprestado. 📖');
+  const handleDecline = () => selectedExchange &&
+    window.confirm('Recusar este pedido?') && runAction(() => declineLoan(selectedExchange), 'declined');
+  const handleCancel = () => selectedExchange &&
+    window.confirm('Cancelar o seu pedido?') && runAction(() => cancelLoan(selectedExchange), 'cancelled');
+  const handleCompleteExchange = () => selectedExchange && user &&
+    window.confirm(`Confirmar que "${selectedExchange.bookTitle}" voltou para você?`) &&
+    runAction(() => completeLoan(selectedExchange, user.displayName || 'Explorador(a) de Mundos'), 'completed', 'Empréstimo concluído! 🎉');
 
   const otherParticipantName = selectedExchange
     ? (selectedExchange.initiatorId === user?.uid ? selectedExchange.receiverName : selectedExchange.initiatorName)
@@ -272,6 +294,14 @@ export default function ExchangeChat() {
                         {ex.status === 'completed' && (
                           <span className="text-[10px] bg-tertiary-container text-on-tertiary-container px-1.5 py-0.5 rounded font-bold">Concluído</span>
                         )}
+                        {ex.status === 'pending' && (
+                          <span className="text-[10px] bg-secondary-container text-on-secondary-container px-1.5 py-0.5 rounded font-bold">
+                            {ex.receiverId === user?.uid ? 'Responder' : 'Aguardando'}
+                          </span>
+                        )}
+                        {(ex.status === 'declined' || ex.status === 'cancelled') && (
+                          <span className="text-[10px] bg-surface-container-high text-on-surface-variant px-1.5 py-0.5 rounded font-bold">Encerrado</span>
+                        )}
                       </div>
                       <p className="text-[11px] text-on-surface-variant truncate">📖 {ex.bookTitle}</p>
                     </div>
@@ -310,16 +340,38 @@ export default function ExchangeChat() {
                   </div>
                 </div>
 
-                {selectedExchange.status !== 'completed' && (
+                {selectedExchange.status === 'accepted' && isOwner && (
                   <button
                     onClick={handleCompleteExchange}
-                    className="flex items-center gap-1.5 bg-tertiary-container text-on-tertiary-container font-label-lg px-3 py-1.5 rounded-xl text-xs font-bold hover:scale-105 transition-transform shadow-xs cursor-pointer"
+                    disabled={isActing}
+                    className="flex items-center gap-1.5 bg-tertiary-container text-on-tertiary-container font-label-lg px-3 py-1.5 rounded-xl text-xs font-bold hover:scale-105 transition-transform shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <Handshake className="w-4 h-4" />
-                    <span className="hidden sm:inline">Concluir Empréstimo</span>
+                    <span className="hidden sm:inline">Livro devolvido</span>
                   </button>
                 )}
               </div>
+
+              {selectedExchange.status === 'pending' && (
+                <div className="bg-secondary-container/60 border-b border-outline-variant/30 px-4 py-3">
+                  <div className="max-w-[800px] mx-auto flex flex-wrap items-center gap-3 justify-between">
+                    <p className="text-xs font-bold text-on-secondary-container">
+                      {isOwner ? `@${selectedExchange.initiatorName} quer pegar "${selectedExchange.bookTitle}" emprestado.` : 'Pedido enviado. Aguardando o dono do livro responder.'}
+                    </p>
+                    <div className="flex gap-2">
+                      {isOwner && (
+                        <>
+                          <button onClick={handleAccept} disabled={isActing} className="px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer disabled:opacity-50">Aceitar</button>
+                          <button onClick={handleDecline} disabled={isActing} className="px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant text-xs font-bold cursor-pointer disabled:opacity-50">Recusar</button>
+                        </>
+                      )}
+                      {isBorrower && (
+                        <button onClick={handleCancel} disabled={isActing} className="px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant text-xs font-bold cursor-pointer disabled:opacity-50">Cancelar pedido</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Chat Messages Body */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3 max-w-[800px] w-full mx-auto">
@@ -393,6 +445,7 @@ export default function ExchangeChat() {
               </div>
 
               {/* Mensagens prontas (sem texto livre) */}
+              {!['declined', 'cancelled', 'completed'].includes(selectedExchange.status) && (
               <div className="bg-surface-container/90 backdrop-blur-md border-t border-outline-variant/30">
                 <div className="max-w-[800px] mx-auto p-3 space-y-2">
                   <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="Tipos de mensagem">
@@ -428,6 +481,7 @@ export default function ExchangeChat() {
                   </div>
                 </div>
               </div>
+              )}
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center my-auto">
