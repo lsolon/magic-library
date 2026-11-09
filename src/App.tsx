@@ -15,6 +15,7 @@ import AddBook from './views/AddBook';
 import Landing from './views/Landing';
 import SetupProfile from './views/SetupProfile';
 import Maintenance from './views/Maintenance';
+import Demo from './views/Demo';
 
 // Mude para false para desativar o modo de manutenção
 const MAINTENANCE_MODE = false;
@@ -48,6 +49,7 @@ export default function App() {
       <Router basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/demo" element={<Demo />} />
           <Route path="/register" element={<Register />} />
           <Route path="/setup-profile" element={<ProtectedRoute><SetupProfile /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
