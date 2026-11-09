@@ -6,15 +6,19 @@ import { BottomNav } from '../components/BottomNav';
 import { BookCoverCard } from '../components/BookCoverCard';
 import { TourGuide } from '../components/TourGuide';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAiSearchLimit } from '../lib/useAiSearchLimit';
+import { calculateStatsFromBooks, GamificationStats } from '../lib/gamification';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'Explorador(a) de Mundos';
   const [latestBook, setLatestBook] = useState<any>(null);
   const [userBooks, setUserBooks] = useState<any[]>([]);
+  const [stats, setStats] = useState<GamificationStats>({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 });
+  const xpIntoLevel = stats.xp % 150;
+  const levelProgressPct = Math.round((xpIntoLevel / 150) * 100);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -26,31 +30,29 @@ export default function Dashboard() {
     async function fetchData() {
       if (!user) return;
       try {
-        // Fetch reading books
-        const readingQuery = query(
-          collection(db, 'user_books'),
-          where('userId', '==', user.uid),
-          where('status', '==', 'Lendo'),
-          limit(1)
+        // user_books guarda só o vínculo (bookId, status, progresso);
+        // título, autor e capa ficam em 'books' — mesmo "join" da tela Livros.
+        const allBooksSnap = await getDocs(
+          query(collection(db, 'user_books'), where('userId', '==', user.uid))
         );
-        const readingSnap = await getDocs(readingQuery);
-        
-        if (!readingSnap.empty) {
-          setLatestBook(readingSnap.docs[0].data());
-        }
+        const rawBooks = allBooksSnap.docs.map(d => d.data());
 
-        // Fetch all user books for the carousel
-        const allBooksQuery = query(
-          collection(db, 'user_books'),
-          where('userId', '==', user.uid),
-          limit(10)
+        const joined = await Promise.all(
+          rawBooks.map(async (ub: any) => {
+            try {
+              const bookSnap = await getDoc(doc(db, 'books', ub.bookId));
+              return { ...ub, bookDetails: bookSnap.exists() ? bookSnap.data() : null };
+            } catch {
+              return { ...ub, bookDetails: null };
+            }
+          })
         );
-        const allBooksSnap = await getDocs(allBooksQuery);
-        setUserBooks(allBooksSnap.docs.map(doc => doc.data()));
+        // Ignora vínculos órfãos (livro apagado), como a tela Livros faz
+        const validBooks = joined.filter(b => b.bookDetails);
 
-        if (readingSnap.empty && !allBooksSnap.empty) {
-          setLatestBook(allBooksSnap.docs[0].data());
-        }
+        setUserBooks(validBooks);
+        setStats(calculateStatsFromBooks(validBooks));
+        setLatestBook(validBooks.find(b => b.status === 'Lendo') || validBooks[0] || null);
       } catch (err) {
         console.error(err);
       }
@@ -111,8 +113,8 @@ export default function Dashboard() {
             <div>
               <h3 className="font-headline-lg-mobile text-on-primary-container">Missão do Dia</h3>
               <p className="font-body-md text-on-primary-container/80 mt-1">
-                {latestBook 
-                  ? `Leia mais um pouco de "${latestBook.bookDetails?.title}" e ganhe poeira estelar!` 
+                {latestBook?.bookDetails?.title
+                  ? `Leia mais um pouco de "${latestBook.bookDetails.title}" e ganhe poeira estelar!`
                   : "Adicione um novo livro à sua estante para começar sua jornada!"}
               </p>
             </div>
@@ -131,13 +133,19 @@ export default function Dashboard() {
             <h3 className="font-headline-lg-mobile text-primary">Mapa da Aventura</h3>
             <div className="flex items-center gap-1 bg-surface rounded-full px-3 py-1 shadow-sm">
               <Sparkles className="w-4 h-4 text-secondary fill-secondary" />
-              <span className="font-label-lg text-secondary">Nível 1</span>
+              <span className="font-label-lg text-secondary">Nível {stats.level}</span>
             </div>
           </div>
+          <p className="font-body-sm text-on-surface-variant -mt-3 mb-2">
+            {xpIntoLevel} / 150 XP para o Nível {stats.level + 1}
+          </p>
           <div className="relative h-32 w-full flex items-center justify-between px-4">
             {/* Path Line */}
             <div className="absolute left-0 right-0 h-3 bg-surface-variant rounded-full mx-8 z-0">
-              <div className="h-full bg-primary-container rounded-full w-[20%]"></div>
+              <div
+                className="h-full bg-primary-container rounded-full transition-all duration-500"
+                style={{ width: `${levelProgressPct}%` }}
+              ></div>
             </div>
             {/* Stops */}
             <div className="relative z-10 flex flex-col items-center gap-2">
@@ -167,7 +175,7 @@ export default function Dashboard() {
         <section className="w-full">
           <h3 className="font-headline-lg-mobile text-primary mb-4 px-2">Livros Mágicos</h3>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-4 px-2 -mx-2 snap-x snap-mandatory">
-            {userBooks.map((ub) => (
+            {userBooks.slice(0, 10).map((ub) => (
               <Link 
                 key={ub.bookId}
                 to={`/book/${ub.bookId}`}

@@ -296,45 +296,53 @@ export default function BookDetail() {
           {/* Book Info */}
           <div className="flex flex-col space-y-6 text-center md:text-left">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 bg-primary-container/30 text-on-primary-container px-4 py-2 rounded-full font-label-lg text-sm w-fit mx-auto md:mx-0">
-                <LayoutGrid className="w-4 h-4" />
-                {book.category || 'Aventura Épica'}
-              </div>
+              {book.category && (
+                <div className="inline-flex items-center gap-2 bg-primary-container/30 text-on-primary-container px-4 py-2 rounded-full font-label-lg text-sm w-fit mx-auto md:mx-0">
+                  <LayoutGrid className="w-4 h-4" />
+                  {book.category}
+                </div>
+              )}
               <h1 className="font-headline-xl text-primary drop-shadow-sm leading-tight">{book.title}</h1>
               <p className="font-body-lg text-on-surface-variant">Por {book.author}</p>
             </div>
 
             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-              <div className="bg-surface-container-high/60 backdrop-blur-md border-2 border-primary-container/50 px-5 py-3 rounded-2xl flex items-center gap-3 shadow-sm">
-                <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center">
-                  <Star className="w-5 h-5 fill-current" />
+              {book.difficulty && (
+                <div className="bg-surface-container-high/60 backdrop-blur-md border-2 border-primary-container/50 px-5 py-3 rounded-2xl flex items-center gap-3 shadow-sm">
+                  <div className="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center">
+                    <Star className="w-5 h-5 fill-current" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-label-lg text-xs text-on-surface-variant">Dificuldade</div>
+                    <div className="font-body-md text-primary font-bold">{book.difficulty}</div>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <div className="font-label-lg text-xs text-on-surface-variant">Dificuldade</div>
-                  <div className="font-body-md text-primary font-bold">{book.difficulty || 'Iniciante'}</div>
+              )}
+              {Number(book.totalPages) > 0 && (
+                <div className="bg-surface-container-high/60 backdrop-blur-md border-2 border-primary-container/50 px-5 py-3 rounded-2xl flex items-center gap-3 shadow-sm">
+                  <div className="w-10 h-10 rounded-full bg-tertiary-container text-on-tertiary-container flex items-center justify-center">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-label-lg text-xs text-on-surface-variant">Páginas</div>
+                    <div className="font-body-md text-primary font-bold">{book.totalPages}</div>
+                  </div>
                 </div>
-              </div>
-              <div className="bg-surface-container-high/60 backdrop-blur-md border-2 border-primary-container/50 px-5 py-3 rounded-2xl flex items-center gap-3 shadow-sm">
-                <div className="w-10 h-10 rounded-full bg-tertiary-container text-on-tertiary-container flex items-center justify-center">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div className="text-left">
-                  <div className="font-label-lg text-xs text-on-surface-variant">Tempo Mágico</div>
-                  <div className="font-body-md text-primary font-bold">15 min</div>
-                </div>
-              </div>
+              )}
             </div>
 
-            <div className="bg-surface-container-low p-6 rounded-[2rem] border-2 border-surface-variant shadow-sm relative">
-              <Quote className="absolute top-4 right-4 text-primary-container opacity-30 w-10 h-10 transform -rotate-12" />
-              <h2 className="font-body-lg text-primary mb-2 flex items-center gap-2 font-bold">
-                <Sparkles className="w-5 h-5 text-secondary fill-secondary" />
-                Sobre a Aventura
-              </h2>
-              <p className="font-body-md text-on-surface-variant leading-relaxed">
-                {book.synopsis || "Prepare-se para uma jornada incrível! Uma história mágica que vai levar sua imaginação para novos mundos fantásticos. Você está pronto para começar?"}
-              </p>
-            </div>
+            {book.synopsis && (
+              <div className="bg-surface-container-low p-6 rounded-[2rem] border-2 border-surface-variant shadow-sm relative">
+                <Quote className="absolute top-4 right-4 text-primary-container opacity-30 w-10 h-10 transform -rotate-12" />
+                <h2 className="font-body-lg text-primary mb-2 flex items-center gap-2 font-bold">
+                  <Sparkles className="w-5 h-5 text-secondary fill-secondary" />
+                  Sobre a Aventura
+                </h2>
+                <p className="font-body-md text-on-surface-variant leading-relaxed">
+                  {book.synopsis}
+                </p>
+              </div>
+            )}
 
             {/* Main Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4">

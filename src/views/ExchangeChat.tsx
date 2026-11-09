@@ -72,16 +72,15 @@ export default function ExchangeChat() {
       }).catch(err => console.error('Error fetching target exchange doc:', err));
     }
 
-    const q = query(collection(db, 'exchanges'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Exchange[] = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() } as Exchange))
-        .filter(ex => 
-          ex.initiatorId === user.uid || 
-          ex.receiverId === user.uid || 
-          ex.initiatorName === user.displayName || 
-          ex.receiverName === user.displayName
-        )
+    // Só baixa as trocas em que o usuário participa (antes baixava as de todos
+    // e filtrava no navegador, expondo conversas de outros alunos).
+    let initiated: Exchange[] = [];
+    let received: Exchange[] = [];
+
+    const publish = () => {
+      const byId = new Map<string, Exchange>();
+      [...initiated, ...received].forEach(ex => byId.set(ex.id, ex));
+      const list = Array.from(byId.values())
         .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
       setExchanges(list);
@@ -98,10 +97,28 @@ export default function ExchangeChat() {
       if (list.length > 0 && !selectedExchange) {
         setSelectedExchange(list[0]);
       }
-    }, (err) => {
+    };
+
+    const toList = (snapshot: any): Exchange[] =>
+      snapshot.docs.map((d: any) => ({ id: d.id, ...d.data() } as Exchange));
+
+    const onError = (err: any) => {
       console.error('Error fetching exchanges:', err);
       setLoadingExchanges(false);
-    });
+    };
+
+    const unsubInitiated = onSnapshot(
+      query(collection(db, 'exchanges'), where('initiatorId', '==', user.uid)),
+      (snapshot) => { initiated = toList(snapshot); publish(); },
+      onError
+    );
+    const unsubReceived = onSnapshot(
+      query(collection(db, 'exchanges'), where('receiverId', '==', user.uid)),
+      (snapshot) => { received = toList(snapshot); publish(); },
+      onError
+    );
+
+    const unsubscribe = () => { unsubInitiated(); unsubReceived(); };
 
     return () => unsubscribe();
   }, [user, targetExchangeId]);

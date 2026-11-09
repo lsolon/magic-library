@@ -542,17 +542,12 @@ export default function Clubs() {
     if (!user) return;
 
     try {
-      // Find existing exchange for this book
-      const q = query(
-        collection(db, 'exchanges'),
-        where('bookId', '==', book.id)
-      );
-
-      const snap = await getDocs(q);
-      const existing = snap.docs.find(d => {
-        const data = d.data();
-        return data.initiatorId === user.uid || data.receiverId === user.uid || data.initiatorId === book.ownerId || data.receiverId === book.ownerId;
-      });
+      // Procura uma troca deste livro em que o usuário já participa
+      const [asInitiator, asReceiver] = await Promise.all([
+        getDocs(query(collection(db, 'exchanges'), where('bookId', '==', book.id), where('initiatorId', '==', user.uid))),
+        getDocs(query(collection(db, 'exchanges'), where('bookId', '==', book.id), where('receiverId', '==', user.uid)))
+      ]);
+      const existing = asInitiator.docs[0] || asReceiver.docs[0];
 
       if (existing) {
         navigate(`/chat?exchangeId=${existing.id}`);
