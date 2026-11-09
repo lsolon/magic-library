@@ -40,7 +40,17 @@ service cloud.firestore {
     match /books/{bookId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if signedIn() && request.resource.data.ownerId == resource.data.ownerId;
+      // Dono altera o livro (sem trocar de dono). Quem está com o livro emprestado
+      // só pode atualizar a página lida (nunca status, leitor atual ou dono).
+      allow update: if signedIn()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && (
+          resource.data.ownerId == request.auth.uid
+          || (resource.data.get('currentReaderId', null) == request.auth.uid
+              && resource.data.get('status', '') == 'borrowed'
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['pagesRead', 'totalPages']))
+        );
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
     }
 
@@ -87,10 +97,59 @@ service cloud.firestore {
 
     // Trocas e conversas: somente os dois participantes.
     match /exchanges/{exchangeId} {
-      allow read, update, delete: if signedIn()
-        && (resource.data.initiatorId == request.auth.uid
-            || resource.data.receiverId == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.initiatorId == request.auth.uid;
+      function isParty(d) {
+        return d.initiatorId == request.auth.uid || d.receiverId == request.auth.uid;
+      }
+      function bookOf(d) {
+        return get(/databases/$(database)/documents/books/$(d.bookId)).data;
+      }
+
+      allow read, delete: if signedIn() && isParty(resource.data);
+
+      // Criar: só como solicitante, para o dono real do livro, como pedido ('pending')
+      // de livro disponível ou como conversa simples ('chat').
+      allow create: if signedIn()
+        && request.resource.data.initiatorId == request.auth.uid
+        && request.resource.data.receiverId != request.auth.uid
+        && exists(/databases/$(database)/documents/books/$(request.resource.data.bookId))
+        && bookOf(request.resource.data).ownerId == request.resource.data.receiverId
+        && (
+          request.resource.data.status == 'chat'
+          || (request.resource.data.status == 'pending'
+              && bookOf(request.resource.data).status == 'available')
+        );
+
+      // Atualizar: só status/borrowerLinked/updatedAt/completedAt; identidades e livro fixos.
+      // Transições: dono aceita/recusa pedido e confirma devolução; aluno cancela o pedido
+      // e marca o vínculo com a própria estante.
+      allow update: if signedIn() && isParty(resource.data)
+        && request.resource.data.initiatorId == resource.data.initiatorId
+        && request.resource.data.receiverId == resource.data.receiverId
+        && request.resource.data.bookId == resource.data.bookId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'borrowerLinked', 'updatedAt', 'completedAt'])
+        && (
+          // sem mudar o status (mensagem enviada, vínculo do aluno)
+          request.resource.data.status == resource.data.status
+          // dono aceita (livro precisa estar disponível) ou recusa
+          || (resource.data.receiverId == request.auth.uid
+              && resource.data.status == 'pending'
+              && (request.resource.data.status == 'declined'
+                  || (request.resource.data.status == 'accepted'
+                      && bookOf(resource.data).status == 'available')))
+          // aluno cancela o próprio pedido
+          || (resource.data.initiatorId == request.auth.uid
+              && resource.data.status == 'pending'
+              && request.resource.data.status == 'cancelled')
+          // dono confirma a devolução
+          || (resource.data.receiverId == request.auth.uid
+              && resource.data.status == 'accepted'
+              && request.resource.data.status == 'completed')
+        )
+        // borrowerLinked só pelo aluno e só em empréstimo aprovado
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['borrowerLinked'])
+            || (resource.data.initiatorId == request.auth.uid
+                && request.resource.data.status == 'accepted'));
 
       // Mensagens: o chat não tem texto livre. Cada mensagem guarda só um código
       // (presetId do aluno, ou systemKind do sistema); o texto vem do app.
@@ -120,7 +179,8 @@ service cloud.firestore {
             // mensagem automática do sistema (códigos fixos, sem texto)
             (request.resource.data.keys().hasOnly(['senderId', 'systemKind', 'createdAt'])
               && request.resource.data.senderId == 'system'
-              && request.resource.data.systemKind in ['loan_request', 'chat_opened'])
+              && request.resource.data.systemKind in ['loan_request', 'chat_opened',
+                'loan_accepted', 'loan_declined', 'loan_cancelled', 'loan_completed'])
           );
 
         allow update, delete: if false;

@@ -494,24 +494,21 @@ export default function Clubs() {
       return;
     }
 
+    if (book.status !== 'available') {
+      alert('Este livro não está disponível no momento.');
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'books', book.id), {
-        status: 'borrowed',
-        currentReaderId: user.uid,
-        currentReaderName: user.displayName || 'Explorador(a) de Mundos',
-        pagesRead: 0
-      });
+      // Já existe um pedido meu em aberto para este livro? Só abre o chat.
+      const mine = await getDocs(query(collection(db, 'exchanges'),
+        where('bookId', '==', book.id), where('initiatorId', '==', user.uid), where('status', '==', 'pending')));
+      if (!mine.empty) {
+        navigate(`/chat?exchangeId=${mine.docs[0].id}`);
+        return;
+      }
 
-      await addDoc(collection(db, 'user_books'), {
-        userId: user.uid,
-        bookId: book.id,
-        status: 'Lendo',
-        progress: 0,
-        pagesRead: 0,
-        addedAt: serverTimestamp()
-      });
-
-      // Create exchange record
+      // Cria apenas o PEDIDO. O livro só muda de mãos quando o dono aprovar.
       const exRef = await addDoc(collection(db, 'exchanges'), {
         initiatorId: user.uid,
         initiatorName: user.displayName || 'Explorador(a) de Mundos',
@@ -521,23 +518,20 @@ export default function Clubs() {
         bookId: book.id,
         bookTitle: book.title,
         bookCoverUrl: book.coverUrl || '',
-        status: 'accepted',
+        status: 'pending',
         createdAt: serverTimestamp()
       });
 
-      // Add initial chat system greeting
       await addDoc(collection(db, 'exchanges', exRef.id, 'messages'), {
         senderId: 'system',
         systemKind: 'loan_request',
         createdAt: serverTimestamp()
       });
 
-      // Refresh local book list & Navigate to chat
-      setBooks(prev => prev.map(b => b.id === book.id ? { ...b, status: 'borrowed', currentReaderId: user.uid, currentReaderName: user.displayName || 'Explorador(a) de Mundos' } : b));
       navigate(`/chat?exchangeId=${exRef.id}`);
     } catch (err) {
-      console.error('Error borrowing book:', err);
-      alert('Erro ao pegar livro emprestado.');
+      console.error('Error requesting book:', err);
+      alert('Erro ao pedir o livro emprestado.');
     }
   };
 
@@ -567,7 +561,7 @@ export default function Clubs() {
         bookId: book.id,
         bookTitle: book.title,
         bookCoverUrl: book.coverUrl || '',
-        status: 'accepted',
+        status: 'chat',
         createdAt: serverTimestamp()
       });
 

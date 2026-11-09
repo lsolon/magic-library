@@ -46,7 +46,8 @@ export const CHAT_PRESET_BY_ID: Record<string, ChatPreset> = Object.fromEntries(
 );
 
 /** Mensagens automáticas do sistema (também sem texto livre). */
-export type SystemMessageKind = 'loan_request' | 'chat_opened';
+export type SystemMessageKind =
+  | 'loan_request' | 'chat_opened' | 'loan_accepted' | 'loan_declined' | 'loan_cancelled' | 'loan_completed';
 
 export function systemMessageText(
   kind: string,
@@ -54,7 +55,15 @@ export function systemMessageText(
 ): string {
   switch (kind) {
     case 'loan_request':
-      return `✨ @${ex.initiatorName} pediu emprestado o livro "${ex.bookTitle}" de @${ex.receiverName}. Use as mensagens prontas abaixo para combinar a entrega! 📖🤝`;
+      return `✨ @${ex.initiatorName} pediu emprestado o livro "${ex.bookTitle}" de @${ex.receiverName}. Agora é esperar @${ex.receiverName} aceitar o pedido! ⏳`;
+    case 'loan_accepted':
+      return `✅ @${ex.receiverName} aceitou emprestar "${ex.bookTitle}"! Use as mensagens prontas para combinar a entrega. 📖🤝`;
+    case 'loan_declined':
+      return `🙏 O pedido de "${ex.bookTitle}" não foi aceito desta vez. Você pode pedir outro livro!`;
+    case 'loan_cancelled':
+      return `↩️ @${ex.initiatorName} cancelou o pedido de "${ex.bookTitle}".`;
+    case 'loan_completed':
+      return `🎉 "${ex.bookTitle}" voltou para @${ex.receiverName}. Empréstimo concluído!`;
     case 'chat_opened':
       return `✨ Troca aberta para o livro "${ex.bookTitle}". Use as mensagens prontas abaixo para combinar! 📖🤝`;
     default:

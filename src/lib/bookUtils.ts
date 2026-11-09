@@ -1,4 +1,4 @@
-import { doc, deleteDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 
 /**
@@ -21,7 +21,10 @@ export async function removeBookKeepHistory(userId: string, bookId: string, user
 
     // 2. Mark book as unshared/archived in 'books' collection
     // Keeping the book doc, exchanges, and messages intact ensures full history is preserved.
+    // Só o dono arquiva o livro; quem apenas lia (emprestado) só tira da própria estante.
     const bookRef = doc(db, 'books', bookId);
+    const bookSnap = await getDoc(bookRef);
+    if (!bookSnap.exists() || bookSnap.data().ownerId !== userId) return;
     await updateDoc(bookRef, {
       status: 'archived',
       currentReaderId: null,

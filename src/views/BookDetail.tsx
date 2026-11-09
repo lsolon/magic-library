@@ -82,7 +82,7 @@ export default function BookDetail() {
         status: newStatus
       });
 
-      if (book.ownerId === user?.uid || book.currentReaderId === user?.uid) {
+      if (book.ownerId === user?.uid) {
         await updateDoc(doc(db, 'books', book.id), {
           pagesRead: numPages,
           status: finalShareable ? 'available' : 'reading_owner',
@@ -95,6 +95,10 @@ export default function BookDetail() {
           currentReaderId: finalShareable ? null : user.uid,
           currentReaderName: finalShareable ? null : user.displayName || 'Explorador(a) de Mundos'
         }));
+      } else if (book.currentReaderId === user?.uid) {
+        // Aluno com o livro emprestado: só atualiza a página (não mexe em status/dono)
+        await updateDoc(doc(db, 'books', book.id), { pagesRead: numPages });
+        setBook((prev: any) => ({ ...prev, pagesRead: numPages }));
       }
 
       if (user) {
