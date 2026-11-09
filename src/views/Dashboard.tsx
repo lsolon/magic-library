@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { BookOpen, Check, Lock, Sparkles, Bookmark, Plus, Compass, Search, Wand2 } from 'lucide-react';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
+import { VersionBadge } from '../components/VersionBadge';
 import { BookCoverCard } from '../components/BookCoverCard';
 import { TourGuide } from '../components/TourGuide';
 import { useAuth } from '../contexts/AuthContext';
@@ -304,6 +305,7 @@ export default function Dashboard() {
             )}
           </div>
         </section>
+        <VersionBadge className="pb-2" />
       </main>
 
       <TourGuide />

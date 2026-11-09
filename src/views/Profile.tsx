@@ -4,6 +4,7 @@ import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Tra
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
+import { VersionBadge } from '../components/VersionBadge';
 import { AvatarGenerator } from '../components/AvatarGenerator';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { updateProfile as updateAuthProfile } from 'firebase/auth';
@@ -490,6 +491,7 @@ export default function Profile() {
             </div>
           </div>
         </div>
+        <VersionBadge className="pb-4" />
       </main>
 
       <BottomNav />
