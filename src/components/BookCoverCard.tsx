@@ -1,3 +1,4 @@
+import { safeAvatar } from '../lib/avatars';
 import { useState } from 'react';
 import { BookOpen, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,7 +34,7 @@ export function BookCoverCard({
   const DEFAULT_COVER = 'https://lh3.googleusercontent.com/aida-public/AB6AXuCcA_pcn1CD283UmkglhGz5sTiIME3I_srxL-_jAh9skbm-ZyMMl8HVH_y0Cd4t47tZqZ5uGjJWKbF8_eDMnc_hEWjGFxkzz6OAq7tAKigSCQ7Kn7EN-zHjYd9oY_vve5fo5DVtysJ8jQm40BiOGEABRFhw_-b-Mqz8qX2Y5WJOJcTUGaycKJL8uk9S9HCu2gfwNdh6E8j5bj75k-faZZHWG9fKE41K-LAgjFtaE3MOnxyg1TXmQgefPoBCRe-fq27Kg1RsoHYVp76Z';
   const effectiveCoverUrl = coverUrl === DEFAULT_COVER ? '' : coverUrl;
 
-  const effectiveAvatar = ownerAvatar || user?.photoURL;
+  const effectiveAvatar = safeAvatar(ownerAvatar, ownerName || user?.uid || 'anon');
   const rawName = ownerName || user?.displayName || 'Explorador(a) de Mundos';
   const formattedName = rawName.startsWith('@') ? rawName : `@${rawName}`;
 

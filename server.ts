@@ -105,15 +105,13 @@ function rateLimit(max: number, windowMs: number) {
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
-const AVATAR_STYLES = ["bottts", "avataaars", "lorelei", "pixel-art", "micah"];
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3002;
 
-  // Corpo pequeno por padrão; só a validação de avatar recebe imagem (até 2 MB).
-  const smallJson = express.json({ limit: '100kb' });
-  app.use((req, res, next) => (req.path.endsWith('/validate-avatar') ? next() : smallJson(req, res, next)));
+  // Corpo pequeno: nenhuma rota recebe imagem.
+  app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ limit: '100kb', extended: true }));
 
   // API routes
@@ -250,94 +248,6 @@ async function startServer() {
         res.json(JSON.parse(text));
       } else {
         res.status(500).json({ error: "Erro ao gerar as informações do livro." });
-      }
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: "Erro interno. Tente novamente." });
-    }
-  });
-
-  apiRouter.post("/validate-avatar", requireAuth, rateLimit(10, DAY), express.json({ limit: '2mb' }), async (req, res) => {
-    try {
-      const { imageBase64, mimeType } = req.body;
-      const allowedMime = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-      if (typeof imageBase64 !== "string" || !imageBase64 || imageBase64.length > 1_900_000) {
-        return res.status(400).json({ error: "Imagem inválida ou grande demais." });
-      }
-      if (mimeType && !allowedMime.includes(mimeType)) {
-        return res.status(400).json({ error: "Tipo de imagem não permitido." });
-      }
-
-      const response = await getAI().models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            inlineData: {
-              mimeType: mimeType || "image/jpeg",
-              data: imageBase64
-            }
-          },
-          "Analise esta imagem enviada pelo usuário para uso como avatar. Verifique se ela é uma fotografia real de pessoa humana (selfie, retrato fotográfico real). O sistema proíbe fotos reais para manter a privacidade e o tema mágico/ilustrado. Retorne um JSON estrito: { isRealPhoto: boolean, reason: string }."
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              isRealPhoto: { type: Type.BOOLEAN },
-              reason: { type: Type.STRING }
-            },
-            required: ["isRealPhoto", "reason"]
-          }
-        }
-      });
-
-      const text = response.text;
-      if (text) {
-        res.json(JSON.parse(text));
-      } else {
-        // Sem resposta da análise: não aprovar a imagem
-        res.status(502).json({ error: "Não foi possível analisar a imagem." });
-      }
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: "Erro interno. Tente novamente." });
-    }
-  });
-
-  apiRouter.post("/generate-gemini-avatar", requireAuth, rateLimit(10, DAY), async (req, res) => {
-    try {
-      const { prompt } = req.body;
-      if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 200) {
-        return res.status(400).json({ error: "Descrição inválida." });
-      }
-
-      const response = await getAI().models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `Com base na seguinte descrição de um personagem mágico: "${prompt}", crie um avatar ilustrado único. Escolha um estilo entre 'bottts', 'avataaars', 'lorelei', 'pixel-art', 'micah' e um seed ideal baseado no texto. Retorne um JSON com: { style: string, seed: string }`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              style: { type: Type.STRING },
-              seed: { type: Type.STRING }
-            },
-            required: ["style", "seed"]
-          }
-        }
-      });
-
-      const text = response.text;
-      if (text) {
-        const parsed = JSON.parse(text);
-        const style = AVATAR_STYLES.includes(parsed.style) ? parsed.style : 'bottts';
-        const seed = String(parsed.seed || prompt).slice(0, 100);
-        const avatarUrl = `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(seed)}`;
-        res.json({ avatarUrl, style, seed });
-      } else {
-        const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(prompt)}`;
-        res.json({ avatarUrl, style: 'bottts', seed: prompt });
       }
     } catch (err: any) {
       console.error(err);

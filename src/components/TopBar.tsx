@@ -1,6 +1,7 @@
 import { Sparkles, LogOut, Compass, BookOpen, Package, User, MessageSquare, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { safeAvatar } from '../lib/avatars';
 import { cn } from '../lib/utils';
 
 export function TopBar(props: any) {
@@ -26,7 +27,7 @@ export function TopBar(props: any) {
             title="Ver Perfil"
           >
             <img 
-              src={userAvatar || user?.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuAUJCngM7oHNkoGOxzFhtzVP7wYWVkxagVebNeGo7h2Ol3PwgoxynlwSbIjMzruGFF_GA-7VeBIS3-nyG5bSOPKU4McJXMPCPZeYAVoxSP89e5piLtUxp-g9gfpdzM5jDvaZSn-Pz7rhpCrYiK4sYTw41qrfJSw14QzgxCXJ_0K9BNK1KdDBvYQu53OSauLxjV94xOsjcxHH6d8pikkg82015XPv42adeq8IU6AtI5RsuYi2QUfQDYMpsk7zLKCbRFeOBUWdOE2569w"}
+              src={safeAvatar(userAvatar, user?.uid)}
               alt="Avatar" 
               className="w-full h-full object-cover" 
               referrerPolicy="no-referrer"

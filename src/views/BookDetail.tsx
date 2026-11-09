@@ -1,3 +1,4 @@
+import { safeAvatar } from '../lib/avatars';
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -18,7 +19,7 @@ import { cn } from '../lib/utils';
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, userAvatar } = useAuth();
   const progressInputRef = useRef<HTMLInputElement>(null);
   
   const [book, setBook] = useState<any>(null);
@@ -265,7 +266,7 @@ export default function BookDetail() {
             <img 
               alt="Avatar" 
               className="w-full h-full object-cover" 
-              src={user?.photoURL || "https://lh3.googleusercontent.com/aida-public/AB6AXuARIYEBYr2Qu-wJTbfzQD633QObYH01qK-pkJE9uSM1l4NPyKGA3ME4i4dqelhpeFcIjASLUvSiAQDlDxShyExEqqUzuUhinFZI2A7AsGZ43IN0cFZjBaJkATFNYbVcoRP71AEQbiNWmF6fGdxv5f9w3DIW63-uZ091WJhSAi2KkkyAzx42zgR8ur0x-Bo6fNJVrc9ywW0zVIaZKAqhSetEs3ip7Wz-2tsvnn_PHbOxVVC2ZJkoUIL-qqhQYab8grZ2oe2lAo6x57HB"} 
+              src={safeAvatar(userAvatar, user?.uid)} 
             />
           </button>
         </div>

@@ -1,3 +1,4 @@
+import { safeAvatar } from '../lib/avatars';
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
@@ -283,7 +284,7 @@ export default function ExchangeChat() {
                   >
                     <div className="w-9 h-9 rounded-full bg-primary-container shrink-0 overflow-hidden border border-surface">
                       {otherAvatar ? (
-                        <img src={otherAvatar} alt={otherName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={safeAvatar(otherAvatar)} alt={otherName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         <User className="w-5 h-5 m-2 text-primary" />
                       )}
@@ -321,7 +322,7 @@ export default function ExchangeChat() {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-secondary-container bg-primary-container shrink-0 shadow-xs">
                     {otherParticipantAvatar ? (
-                      <img src={otherParticipantAvatar} alt={otherParticipantName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={safeAvatar(otherParticipantAvatar)} alt={otherParticipantName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     ) : (
                       <User className="w-5 h-5 m-2.5 text-primary" />
                     )}
@@ -420,7 +421,7 @@ export default function ExchangeChat() {
                         {!isMe && (
                           <div className="w-7 h-7 rounded-full bg-primary-container shrink-0 overflow-hidden border border-surface">
                             {sender.avatar ? (
-                              <img src={sender.avatar} alt={sender.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              <img src={safeAvatar(sender.avatar)} alt={sender.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <User className="w-4 h-4 m-1.5 text-primary" />
                             )}

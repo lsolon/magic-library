@@ -1,3 +1,4 @@
+import { safeAvatar } from '../lib/avatars';
 import React, { useEffect, useState } from 'react';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
@@ -725,7 +726,7 @@ export default function Clubs() {
                     >
                       <div className="w-6 h-6 rounded-full overflow-hidden bg-primary-container shrink-0">
                         {m.avatarUrl ? (
-                          <img src={m.avatarUrl} alt={m.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={safeAvatar(m.avatarUrl, m.uid || m.displayName)} alt={m.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <User className="w-3.5 h-3.5 m-1 text-primary" />
                         )}
@@ -1267,7 +1268,7 @@ export default function Clubs() {
                         <div className="flex items-center gap-2 overflow-hidden">
                           <div className="w-7 h-7 rounded-full bg-primary-container shrink-0 overflow-hidden">
                             {res.avatarUrl ? (
-                              <img src={res.avatarUrl} alt={res.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              <img src={safeAvatar(res.avatarUrl, res.uid || res.displayName)} alt={res.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <User className="w-4 h-4 m-1 text-primary" />
                             )}
