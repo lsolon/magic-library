@@ -20,8 +20,8 @@ export async function clearAllUserData(userId: string) {
     await Promise.all(booksSnap.docs.map(d => deleteDoc(doc(db, 'books', d.id))));
 
     // 3. Delete exchanges where user is owner or requester
-    const exOwnerQuery = query(collection(db, 'exchanges'), where('ownerId', '==', userId));
-    const exReqQuery = query(collection(db, 'exchanges'), where('requesterId', '==', userId));
+    const exOwnerQuery = query(collection(db, 'exchanges'), where('initiatorId', '==', userId));
+    const exReqQuery = query(collection(db, 'exchanges'), where('receiverId', '==', userId));
     
     const [exOwnerSnap, exReqSnap] = await Promise.all([
       getDocs(exOwnerQuery),
@@ -47,40 +47,6 @@ export async function clearAllUserData(userId: string) {
 
   } catch (err) {
     console.error('Error clearing user data:', err);
-    throw err;
-  }
-}
-
-/**
- * Clears ALL data in the database across user_books, books, and exchanges.
- */
-export async function clearEntireDatabase() {
-  try {
-    // Clear all user_books
-    const ubSnap = await getDocs(collection(db, 'user_books'));
-    await Promise.all(ubSnap.docs.map(d => deleteDoc(doc(db, 'user_books', d.id))));
-
-    // Clear all books
-    const booksSnap = await getDocs(collection(db, 'books'));
-    await Promise.all(booksSnap.docs.map(d => deleteDoc(doc(db, 'books', d.id))));
-
-    // Clear all exchanges
-    const exSnap = await getDocs(collection(db, 'exchanges'));
-    await Promise.all(exSnap.docs.map(d => deleteDoc(doc(db, 'exchanges', d.id))));
-
-    // Reset stats for all users
-    const usersSnap = await getDocs(collection(db, 'users'));
-    await Promise.all(usersSnap.docs.map(d => setDoc(doc(db, 'users', d.id), {
-      xp: 0,
-      level: 1,
-      stars: 0,
-      totalPagesRead: 0,
-      booksReadCount: 0,
-      updatedAt: new Date()
-    }, { merge: true }).catch(() => {})));
-
-  } catch (err) {
-    console.error('Error clearing entire database:', err);
     throw err;
   }
 }

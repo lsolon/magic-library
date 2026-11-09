@@ -1,34 +1,67 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email == 'leandrosolon@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    // NOTA: leitura pública mantida porque o cadastro por e-mail verifica se o
+    // nome de exibição já existe ANTES do login. Próximo passo: mover essa
+    // verificação para uma coleção 'usernames' (só o nome) e fechar esta leitura,
+    // pois o documento tem e-mail e nome real.
     match /users/{userId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if signedIn() && request.auth.uid == userId;
     }
+
+    // Livros: qualquer logado pode criar (como dono) e atualizar (empréstimo/
+    // devolução mexem no status), mas ninguém troca o dono nem apaga livro alheio.
     match /books/{bookId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn() && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
     }
+
+    // Vínculo usuário-livro: cada um altera/apaga só o seu.
     match /user_books/{docId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if request.auth != null;
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
+
     match /clubs/{clubId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if signedIn();
     }
+
+    // Trocas e conversas: somente os dois participantes.
     match /exchanges/{exchangeId} {
-      allow read, write: if request.auth != null;
+      allow read, update, delete: if signedIn()
+        && (resource.data.initiatorId == request.auth.uid
+            || resource.data.receiverId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.initiatorId == request.auth.uid;
+
       match /messages/{messageId} {
-        allow read, write: if request.auth != null;
+        allow read, create: if signedIn() && (
+          get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.initiatorId == request.auth.uid
+          || get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.receiverId == request.auth.uid
+        );
+        allow update, delete: if false;
       }
     }
 
+    // Logs de acesso: qualquer logado grava o próprio; só o admin lê.
     match /access_logs/{logId} {
-      allow create: if request.auth != null;
-      allow read: if request.auth != null;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin();
     }
   }
 }
-

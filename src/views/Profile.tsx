@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Trash2, AlertTriangle, RotateCcw, Book, Flame, Timer, Package, Crown } from 'lucide-react';
+import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Trash2, AlertTriangle, Book, Flame, Timer, Package, Crown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
@@ -9,7 +9,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { updateProfile as updateAuthProfile } from 'firebase/auth';
 import { db } from '../lib/firebase';
 import { syncUserGamificationStats, calculateBadges, BadgeDef, GamificationStats } from '../lib/gamification';
-import { clearAllUserData, clearEntireDatabase } from '../lib/dataUtils';
+import { clearAllUserData } from '../lib/dataUtils';
 
 export default function Profile() {
   const { user } = useAuth();
@@ -28,7 +28,6 @@ export default function Profile() {
   const [error, setError] = useState('');
   const [savedAvatars, setSavedAvatars] = useState<string[]>([]);
   const [isClearingData, setIsClearingData] = useState(false);
-  const [isClearingDb, setIsClearingDb] = useState(false);
 
   const handleClearUserData = async () => {
     if (!user) return;
@@ -51,30 +50,6 @@ export default function Profile() {
       setError('Falha ao limpar seus dados. Tente novamente.');
     } finally {
       setIsClearingData(false);
-    }
-  };
-
-  const handleClearEntireDb = async () => {
-    if (!user) return;
-    if (!window.confirm("CUIDADO EXTREMO: Deseja LIMPAR TODO O BANCO DE DADOS da aplicação (todos os livros, grupos e trocas de todos os usuários)? Esta ação é irreversível.")) {
-      return;
-    }
-
-    setIsClearingDb(true);
-    setError('');
-    setSuccessMessage('');
-
-    try {
-      await clearEntireDatabase();
-      setStats({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 });
-      setBadges(calculateBadges({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 }));
-      setSuccessMessage('Todo o banco de dados da aplicação foi limpo com sucesso! 🧹✨');
-      setTimeout(() => setSuccessMessage(''), 5000);
-    } catch (err) {
-      console.error('Error clearing database:', err);
-      setError('Falha ao limpar o banco de dados. Tente novamente.');
-    } finally {
-      setIsClearingDb(false);
     }
   };
 
@@ -497,29 +472,20 @@ export default function Profile() {
                 Gerenciamento & Limpeza de Dados
               </h3>
               <p className="text-xs text-on-surface-variant leading-relaxed">
-                Utilize as opções abaixo caso deseje reiniciar seus dados ou redefinir todas as informações cadastradas no sistema.
+                Use a opção abaixo se quiser apagar os seus livros, trocas e progresso de leitura.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="grid grid-cols-1 gap-4 pt-2">
                 <button
                   type="button"
                   onClick={handleClearUserData}
-                  disabled={isClearingData || isClearingDb}
+                  disabled={isClearingData}
                   className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-error/10 hover:bg-error/20 text-error font-label-lg font-bold border border-error/30 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>{isClearingData ? 'Limpando...' : 'Limpar Meus Dados'}</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleClearEntireDb}
-                  disabled={isClearingData || isClearingDb}
-                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-error text-on-error font-label-lg font-bold shadow-md hover:bg-error/90 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>{isClearingDb ? 'Reiniciando...' : 'Limpar Todo o Banco (Reset)'}</span>
-                </button>
               </div>
             </div>
           </div>
