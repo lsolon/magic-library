@@ -27,11 +27,19 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const basePath = env.VITE_BASE_PATH || '/';
   const build = getBuildInfo();
+  // Build de demonstração: troca o Firebase por um banco/login de mentira (src/demo/*).
+  const demo = env.VITE_DEMO === 'true';
+  const demoAlias = demo ? [
+    { find: /^firebase\/firestore$/, replacement: path.resolve(__dirname, 'src/demo/fakeFirestore.ts') },
+    { find: /^firebase\/auth$/, replacement: path.resolve(__dirname, 'src/demo/fakeAuth.ts') },
+    { find: /^firebase\/app$/, replacement: path.resolve(__dirname, 'src/demo/fakeApp.ts') },
+  ] : [];
   
   return {
     base: basePath,
     define: {
       __APP_VERSION__: JSON.stringify(build.label),
+      __DEMO__: JSON.stringify(demo),
     },
     plugins: [
       react(),
@@ -46,9 +54,10 @@ export default defineConfig(({ mode }) => {
       },
     ],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
+      alias: [
+        ...demoAlias,
+        { find: '@', replacement: path.resolve(__dirname, '.') },
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Dashboard from './views/Dashboard';
 import BookDetail from './views/BookDetail';
 import Clubs from './views/Clubs';
@@ -15,7 +15,10 @@ import AddBook from './views/AddBook';
 import Landing from './views/Landing';
 import SetupProfile from './views/SetupProfile';
 import Maintenance from './views/Maintenance';
-import Demo from './views/Demo';
+
+// Demonstração: HashRouter (funciona em pasta estática) e seletor de aluno.
+const Router: any = __DEMO__ ? HashRouter : BrowserRouter;
+const DemoSwitcher = __DEMO__ ? React.lazy(() => import('./demo/DemoSwitcher')) : null;
 
 // Mude para false para desativar o modo de manutenção
 const MAINTENANCE_MODE = false;
@@ -46,10 +49,9 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <Router basename={import.meta.env.BASE_URL}>
+      <Router basename={__DEMO__ ? undefined : import.meta.env.BASE_URL}>
         <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/demo" element={<Demo />} />
+          <Route path="/" element={__DEMO__ ? <Navigate to="/dashboard" replace /> : <Landing />} />
           <Route path="/register" element={<Register />} />
           <Route path="/setup-profile" element={<ProtectedRoute><SetupProfile /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -65,6 +67,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
+      {DemoSwitcher && <React.Suspense fallback={null}><DemoSwitcher /></React.Suspense>}
     </AuthProvider>
   );
 }
