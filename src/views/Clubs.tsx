@@ -524,8 +524,7 @@ export default function Clubs() {
       // Add initial chat system greeting
       await addDoc(collection(db, 'exchanges', exRef.id, 'messages'), {
         senderId: 'system',
-        senderName: 'Magic Library',
-        text: `✨ @${user.displayName || 'Explorador(a) de Mundos'} solicitou o empréstimo do livro "${book.title}" do(a) Guardião(ã) @${book.ownerName}. Conversem por aqui para alinhar os detalhes da entrega! 📖🤝`,
+        systemKind: 'loan_request',
         createdAt: serverTimestamp()
       });
 
@@ -570,8 +569,7 @@ export default function Clubs() {
 
       await addDoc(collection(db, 'exchanges', exRef.id, 'messages'), {
         senderId: 'system',
-        senderName: 'Magic Library',
-        text: `✨ Chat de troca aberto para o livro "${book.title}". Conversem por aqui para alinhar detalhes de leitura ou empréstimo! 📖🤝`,
+        systemKind: 'chat_opened',
         createdAt: serverTimestamp()
       });
 
