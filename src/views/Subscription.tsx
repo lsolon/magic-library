@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Sparkles, Star, Zap, Crown, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { authFetch } from '../lib/api';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
 
@@ -16,16 +17,7 @@ export default function Subscription() {
     setError('');
 
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/create-preference`.replace('//', '/'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          plan,
-          userEmail: user.email
-        })
-      });
+      const res = await authFetch('api/create-preference', { plan });
 
       if (!res.ok) {
         throw new Error('Falha ao processar pagamento');
