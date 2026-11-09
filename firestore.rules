@@ -12,19 +12,33 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
 
-    // NOTA: leitura pública mantida porque o cadastro por e-mail verifica se o
-    // nome de exibição já existe ANTES do login. Próximo passo: mover essa
-    // verificação para uma coleção 'usernames' (só o nome) e fechar esta leitura,
-    // pois o documento tem e-mail e nome real.
+    // Perfil privado: só o dono e o admin leem (tem e-mail e nome real).
+    // O cliente não pode se dar assinatura nem estender o teste (isSubscribed, createdAt);
+    // a assinatura só deve ser gravada por servidor/admin.
     match /users/{userId} {
-      allow read: if true;
-      allow write: if signedIn() && request.auth.uid == userId;
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn() && request.auth.uid == userId
+        && !request.resource.data.keys().hasAny(['isSubscribed']);
+      allow update: if signedIn() && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSubscribed', 'createdAt']);
+      allow delete: if false;
+    }
+
+    // Apelidos: registro mínimo { uid, displayName }. Garante apelido único e permite
+    // achar um colega pelo apelido exato. Não dá para listar (list = false).
+    match /usernames/{key} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'displayName'])
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // Livros: qualquer logado pode criar (como dono) e atualizar (empréstimo/
     // devolução mexem no status), mas ninguém troca o dono nem apaga livro alheio.
     match /books/{bookId} {
-      allow read: if true;
+      allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update: if signedIn() && request.resource.data.ownerId == resource.data.ownerId;
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
@@ -37,9 +51,38 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
+    // Grupos: só os membros leem. Entrar = acrescentar a si mesmo (o código vive em
+    // club_codes e só quem o conhece descobre o id do grupo). Só o dono altera o resto.
     match /clubs/{clubId} {
-      allow read: if true;
-      allow write: if signedIn();
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.members == [request.auth.uid];
+
+      allow update: if signedIn() && (
+        (resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+          && request.resource.data.code == resource.data.code)
+        ||
+        (!(request.auth.uid in resource.data.members)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberDetails'])
+          && request.resource.data.members == resource.data.members.concat([request.auth.uid])
+          && request.resource.data.memberDetails.size() == resource.data.get('memberDetails', []).size() + 1)
+      );
+
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Código de convite -> id do grupo. Leitura só por get (sem listar); só o dono cria.
+    match /club_codes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['clubId', 'ownerId'])
+        && request.resource.data.ownerId == request.auth.uid
+        && get(/databases/$(database)/documents/clubs/$(request.resource.data.clubId)).data.ownerId == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // Trocas e conversas: somente os dois participantes.

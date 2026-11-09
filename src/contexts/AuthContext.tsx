@@ -10,7 +10,8 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs, doc, setDoc, getDoc, onSnapshot, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, onSnapshot, serverTimestamp, addDoc } from 'firebase/firestore';
+import { claimUsername } from '../lib/usernames';
 
 interface AuthContextType {
   user: User | null;
@@ -68,6 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (docSnap.exists()) {
             setNeedsProfileSetup(false);
             const data = docSnap.data();
+
+            // Usuários antigos: garante o registro do apelido (melhor esforço, uma vez por sessão)
+            if (data.displayName && !sessionStorage.getItem('username_claimed_' + currentUser.uid)) {
+              sessionStorage.setItem('username_claimed_' + currentUser.uid, 'true');
+              claimUsername(currentUser.uid, data.displayName).catch(() => {});
+            }
             
             // Check subscription and trial
             const subscribed = !!data.isSubscribed;
@@ -151,11 +158,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!trimmedName) throw new Error('O nome de exibição é obrigatório.');
     if (!trimmedRealName) throw new Error('O nome real é obrigatório.');
 
-    const q = query(collection(db, 'users'), where('displayName', '==', trimmedName));
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      throw new Error('Este nome de exibição já está em uso por outro explorador. Escolha outro nome.');
+    try {
+      await claimUsername(user.uid, trimmedName);
+    } catch (err: any) {
+      if (err?.message === 'USERNAME_TAKEN') {
+        throw new Error('Este nome de exibição já está em uso por outro explorador. Escolha outro nome.');
+      }
+      throw err;
     }
 
     await updateProfile(user, { displayName: trimmedName });
@@ -177,14 +186,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('O nome real é obrigatório.');
     }
 
-    // Check if displayName already exists in users collection
-    const q = query(collection(db, 'users'), where('displayName', '==', trimmedName));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      throw new Error('Este nome de exibição já está em uso por outro explorador. Escolha outro nome.');
-    }
-
     const result = await createUserWithEmailAndPassword(auth, email, password);
+
+    // Reserva o apelido já autenticado (a coleção 'users' não é mais pública).
+    // Se já estiver em uso, desfaz a conta recém-criada.
+    try {
+      await claimUsername(result.user.uid, trimmedName);
+    } catch (err: any) {
+      await result.user.delete().catch(() => {});
+      if (err?.message === 'USERNAME_TAKEN') {
+        throw new Error('Este nome de exibição já está em uso por outro explorador. Escolha outro nome.');
+      }
+      throw err;
+    }
     await updateProfile(result.user, { displayName: trimmedName });
     await createUserDocument(result.user, trimmedName, trimmedRealName);
   };

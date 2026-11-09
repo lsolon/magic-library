@@ -9,11 +9,12 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   collection, query, where, getDocs, updateDoc, doc, addDoc, 
-  serverTimestamp, arrayUnion, getDoc, onSnapshot 
+  serverTimestamp, arrayUnion, getDoc, setDoc, onSnapshot 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { syncUserGamificationStats } from '../lib/gamification';
+import { findUserByUsername } from '../lib/usernames';
 import { removeBookKeepHistory } from '../lib/bookUtils';
 import { cn } from '../lib/utils';
 
@@ -107,6 +108,19 @@ export default function Clubs() {
       } as Club));
 
       setClubs(fetchedClubs);
+
+      // Grupos antigos: garante o registro do código de convite (só o dono pode criar)
+      fetchedClubs
+        .filter(c => c.ownerId === user.uid && c.code)
+        .forEach(c => {
+          getDoc(doc(db, 'club_codes', c.code))
+            .then(snap => {
+              if (!snap.exists()) {
+                return setDoc(doc(db, 'club_codes', c.code), { clubId: c.id, ownerId: user.uid });
+              }
+            })
+            .catch(() => {});
+        });
 
       if (fetchedClubs.length > 0) {
         setSelectedClub(fetchedClubs[0]);
@@ -325,14 +339,15 @@ export default function Clubs() {
           {
             uid: user.uid,
             displayName: user.displayName || 'Explorador(a) de Mundos',
-            avatarUrl: userAvatar || '',
-            email: user.email || ''
+            avatarUrl: userAvatar || ''
           }
         ],
         createdAt: serverTimestamp()
       };
 
       const docRef = await addDoc(collection(db, 'clubs'), newClubData);
+      // Código de convite fica num registro à parte: o grupo só é legível pelos membros
+      await setDoc(doc(db, 'club_codes', generatedCode), { clubId: docRef.id, ownerId: user.uid });
       const createdClub: Club = { id: docRef.id, ...newClubData };
 
       setClubs(prev => [createdClub, ...prev]);
@@ -357,45 +372,48 @@ export default function Clubs() {
     setIsSubmitting(true);
     try {
       const cleanCode = joinCode.trim().toUpperCase();
-      const q = query(collection(db, 'clubs'), where('code', '==', cleanCode));
-      const querySnap = await getDocs(q);
+      const codeSnap = await getDoc(doc(db, 'club_codes', cleanCode));
 
-      if (querySnap.empty) {
+      if (!codeSnap.exists()) {
         alert('Código de grupo não encontrado. Verifique o código e tente novamente.');
         setIsSubmitting(false);
         return;
       }
 
-      const clubDoc = querySnap.docs[0];
-      const clubData = clubDoc.data() as Club;
+      const clubId = (codeSnap.data() as { clubId: string }).clubId;
 
-      if (clubData.members && clubData.members.includes(user.uid)) {
-        alert('Você já faz parte deste grupo!');
-        setSelectedClub({ id: clubDoc.id, ...clubData });
-        setShowJoinModal(false);
-        setJoinCode('');
-        setIsSubmitting(false);
-        return;
+      // Só membros conseguem ler o grupo: se a leitura funcionar, a pessoa já faz parte
+      try {
+        const existingSnap = await getDoc(doc(db, 'clubs', clubId));
+        if (existingSnap.exists()) {
+          const existing = { id: existingSnap.id, ...existingSnap.data() } as Club;
+          if (existing.members && existing.members.includes(user.uid)) {
+            alert('Você já faz parte deste grupo!');
+            setSelectedClub(existing);
+            setShowJoinModal(false);
+            setJoinCode('');
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      } catch {
+        // permissão negada = ainda não é membro; segue para entrar
       }
 
       const userMemberInfo: ClubMember = {
         uid: user.uid,
         displayName: user.displayName || 'Explorador(a) de Mundos',
-        avatarUrl: userAvatar || '',
-        email: user.email || ''
+        avatarUrl: userAvatar || ''
       };
 
-      await updateDoc(doc(db, 'clubs', clubDoc.id), {
+      await updateDoc(doc(db, 'clubs', clubId), {
         members: arrayUnion(user.uid),
         memberDetails: arrayUnion(userMemberInfo)
       });
 
-      const updatedClub: Club = {
-        ...clubData,
-        id: clubDoc.id,
-        members: [...(clubData.members || []), user.uid],
-        memberDetails: [...(clubData.memberDetails || []), userMemberInfo]
-      };
+      // Agora como membro, lê o grupo atualizado
+      const joinedSnap = await getDoc(doc(db, 'clubs', clubId));
+      const updatedClub = { id: joinedSnap.id, ...joinedSnap.data() } as Club;
 
       setClubs(prev => [updatedClub, ...prev.filter(c => c.id !== updatedClub.id)]);
       setSelectedClub(updatedClub);
@@ -410,31 +428,19 @@ export default function Clubs() {
     }
   };
 
-  // Search users by displayName or email for invitation
+  // Search users by exact display name (apelido) for invitation
   const handleSearchUsers = async () => {
     if (!userSearchQuery.trim()) return;
     setIsSearchingUsers(true);
     setSearchResults([]);
 
     try {
-      const term = userSearchQuery.trim();
-      const qDisplay = query(collection(db, 'users'), where('displayName', '==', term));
-      const qEmail = query(collection(db, 'users'), where('email', '==', term));
-
-      const [snapDisplay, snapEmail] = await Promise.all([getDocs(qDisplay), getDocs(qEmail)]);
+      // Busca pelo apelido exato (a coleção de usuários é privada)
+      const hit = await findUserByUsername(userSearchQuery.trim());
       const found: UserSearchResult[] = [];
-
-      snapDisplay.docs.forEach(d => {
-        if (d.id !== user?.uid) {
-          found.push({ uid: d.id, ...d.data() } as UserSearchResult);
-        }
-      });
-
-      snapEmail.docs.forEach(d => {
-        if (d.id !== user?.uid && !found.some(f => f.uid === d.id)) {
-          found.push({ uid: d.id, ...d.data() } as UserSearchResult);
-        }
-      });
+      if (hit && hit.uid !== user?.uid) {
+        found.push({ uid: hit.uid, displayName: hit.displayName });
+      }
 
       setSearchResults(found);
     } catch (err) {
@@ -456,9 +462,7 @@ export default function Clubs() {
       const newMember: ClubMember = {
         uid: targetUser.uid,
         displayName: targetUser.displayName,
-        realName: targetUser.realName,
-        avatarUrl: targetUser.avatarUrl,
-        email: targetUser.email
+        avatarUrl: targetUser.avatarUrl || ''
       };
 
       await updateDoc(doc(db, 'clubs', selectedClub.id), {
@@ -691,13 +695,15 @@ export default function Clubs() {
                   <span className="font-bold">{selectedClub.code}</span>
                 </button>
 
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="flex items-center gap-1.5 bg-secondary-container text-on-secondary-container font-label-lg px-4 py-2 rounded-xl text-xs font-bold hover:scale-105 transition-transform shadow-sm cursor-pointer"
-                >
-                  <Share2 className="w-4 h-4" />
-                  <span>Convidar Colega</span>
-                </button>
+                {selectedClub.ownerId === user?.uid && (
+                  <button
+                    onClick={() => setShowInviteModal(true)}
+                    className="flex items-center gap-1.5 bg-secondary-container text-on-secondary-container font-label-lg px-4 py-2 rounded-xl text-xs font-bold hover:scale-105 transition-transform shadow-sm cursor-pointer"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    <span>Convidar Colega</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -705,12 +711,14 @@ export default function Clubs() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="font-label-lg text-xs text-outline uppercase tracking-wider font-bold">Colegas no Grupo</span>
-                <button 
-                  onClick={() => setShowInviteModal(true)}
-                  className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Adicionar Amigos
-                </button>
+                {selectedClub.ownerId === user?.uid && (
+                  <button 
+                    onClick={() => setShowInviteModal(true)}
+                    className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Adicionar Amigos
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -719,7 +727,7 @@ export default function Clubs() {
                     <div 
                       key={m.uid} 
                       className="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant/30 text-xs shadow-2xs"
-                      title={m.realName ? `${m.displayName} (${m.realName})` : m.displayName}
+                      title={m.displayName}
                     >
                       <div className="w-6 h-6 rounded-full overflow-hidden bg-primary-container shrink-0">
                         {m.avatarUrl ? (
@@ -1080,8 +1088,8 @@ export default function Clubs() {
         )}
       </main>
 
-      {/* FAB Invite */}
-      {selectedClub && (
+      {/* FAB Invite (só o dono do grupo) */}
+      {selectedClub && selectedClub.ownerId === user?.uid && (
         <button 
           onClick={() => setShowInviteModal(true)}
           className="fixed bottom-24 md:bottom-10 right-6 md:right-10 bg-secondary-container text-on-secondary-container rounded-full p-3.5 md:px-5 md:py-3.5 shadow-xl hover:scale-110 active:scale-95 transition-transform cursor-pointer flex items-center justify-center z-40 border-2 border-surface font-bold text-xs"
@@ -1229,13 +1237,13 @@ export default function Clubs() {
               <span>Enviar Convite por E-mail</span>
             </a>
 
-            {/* Search user by username or email */}
+            {/* Search user by username (apelido exato) */}
             <div className="space-y-2 pt-2 border-t border-outline-variant/30">
-              <label className="block text-xs font-bold text-on-surface">Buscar Colega pelo Nome de Usuário Único (@) ou E-mail</label>
+              <label className="block text-xs font-bold text-on-surface">Buscar Colega pelo Nome de Usuário Único (@)</label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Ex: Pegasus ou leandro@gmail.com"
+                  placeholder="Digite o apelido exato. Ex: Pegasus"
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchUsers()}
@@ -1272,7 +1280,6 @@ export default function Clubs() {
                           </div>
                           <div className="truncate">
                             <span className="block text-xs font-bold text-on-surface truncate">@{res.displayName}</span>
-                            {res.realName && <span className="block text-[10px] text-on-surface-variant truncate">{res.realName}</span>}
                           </div>
                         </div>
 
