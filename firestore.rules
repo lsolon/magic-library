@@ -49,11 +49,37 @@ service cloud.firestore {
             || resource.data.receiverId == request.auth.uid);
       allow create: if signedIn() && request.resource.data.initiatorId == request.auth.uid;
 
+      // Mensagens: o chat não tem texto livre. Cada mensagem guarda só um código
+      // (presetId do aluno, ou systemKind do sistema); o texto vem do app.
+      // Lista de ids sincronizada com src/lib/chatPresets.ts.
       match /messages/{messageId} {
-        allow read, create: if signedIn() && (
-          get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.initiatorId == request.auth.uid
-          || get(/databases/$(database)/documents/exchanges/$(exchangeId)).data.receiverId == request.auth.uid
-        );
+        function isParticipant() {
+          let ex = get(/databases/$(database)/documents/exchanges/$(exchangeId)).data;
+          return ex.initiatorId == request.auth.uid || ex.receiverId == request.auth.uid;
+        }
+        function presetIds() {
+          return ['oi', 'posso_pegar', 'quando', 'amanha_escola',
+                  'pode_sim', 'ainda_lendo', 'combinado', 'outro_dia',
+                  'recebi', 'vou_cuidar', 'mais_dias', 'devolvi',
+                  'obrigado', 'adorei', 'indicar'];
+        }
+
+        allow read: if signedIn() && isParticipant();
+
+        allow create: if signedIn() && isParticipant()
+          && request.resource.data.createdAt == request.time
+          && (
+            // mensagem pronta do aluno
+            (request.resource.data.keys().hasOnly(['senderId', 'presetId', 'createdAt'])
+              && request.resource.data.senderId == request.auth.uid
+              && request.resource.data.presetId in presetIds())
+            ||
+            // mensagem automática do sistema (códigos fixos, sem texto)
+            (request.resource.data.keys().hasOnly(['senderId', 'systemKind', 'createdAt'])
+              && request.resource.data.senderId == 'system'
+              && request.resource.data.systemKind in ['loan_request', 'chat_opened'])
+          );
+
         allow update, delete: if false;
       }
     }

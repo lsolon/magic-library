@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  ArrowLeft, ArrowRightLeft, Handshake, Send, Smile, Sparkles, X, Star, 
+  ArrowLeft, ArrowRightLeft, Handshake, Sparkles, X, Star, 
   MessageSquare, User, BookOpen, CheckCircle, RefreshCw, Clock 
 } from 'lucide-react';
 import { 
@@ -12,6 +12,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
+import { CHAT_PRESETS, CHAT_PRESET_BY_ID, CHAT_PRESET_GROUPS, systemMessageText, ChatPreset } from '../lib/chatPresets';
 
 interface Exchange {
   id: string;
@@ -31,9 +32,11 @@ interface Exchange {
 interface ChatMessage {
   id: string;
   senderId: string;
-  senderName: string;
-  senderAvatar?: string;
-  text: string;
+  presetId?: string;       // mensagem pronta escolhida pelo aluno
+  systemKind?: string;     // mensagem automática do sistema
+  text?: string;           // legado: mensagens antigas de texto livre
+  senderName?: string;     // legado
+  senderAvatar?: string;   // legado
   createdAt?: any;
 }
 
@@ -46,10 +49,9 @@ export default function ExchangeChat() {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [selectedExchange, setSelectedExchange] = useState<Exchange | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [newMessageText, setNewMessageText] = useState('');
   const [loadingExchanges, setLoadingExchanges] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [openGroup, setOpenGroup] = useState<ChatPreset['group']>('combinar');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -148,23 +150,16 @@ export default function ExchangeChat() {
     return () => unsubscribe();
   }, [selectedExchange]);
 
-  // Handle Send Message
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!user || !selectedExchange || !newMessageText.trim()) return;
-
-    const textToSend = newMessageText.trim();
-    setNewMessageText('');
-    setShowEmojiPicker(false);
+  // Envia uma mensagem pronta (o chat não aceita texto livre)
+  const handleSendPreset = async (preset: ChatPreset) => {
+    if (!user || !selectedExchange || isSending) return;
     setIsSending(true);
 
     try {
       const messagesRef = collection(db, 'exchanges', selectedExchange.id, 'messages');
       await addDoc(messagesRef, {
         senderId: user.uid,
-        senderName: user.displayName || 'Explorador(a) de Mundos',
-        senderAvatar: userAvatar || '',
-        text: textToSend,
+        presetId: preset.id,
         createdAt: serverTimestamp()
       });
 
@@ -182,10 +177,20 @@ export default function ExchangeChat() {
     }
   };
 
-  // Add emoji to message input
-  const addEmoji = (emoji: string) => {
-    setNewMessageText(prev => prev + emoji);
-    setShowEmojiPicker(false);
+  // Quem enviou, com nome/avatar vindos da troca (não da mensagem)
+  const senderInfo = (msg: ChatMessage) => {
+    if (!selectedExchange) return { name: msg.senderName || '', avatar: msg.senderAvatar || '' };
+    const isInitiator = msg.senderId === selectedExchange.initiatorId;
+    return {
+      name: isInitiator ? selectedExchange.initiatorName : selectedExchange.receiverName,
+      avatar: (isInitiator ? selectedExchange.initiatorAvatar : selectedExchange.receiverAvatar) || ''
+    };
+  };
+
+  const messageText = (msg: ChatMessage): string => {
+    if (msg.presetId) return CHAT_PRESET_BY_ID[msg.presetId]?.text || '';
+    if (msg.systemKind && selectedExchange) return systemMessageText(msg.systemKind, selectedExchange);
+    return msg.text || ''; // mensagens antigas
   };
 
   // Conclude exchange / Complete borrow
@@ -341,18 +346,29 @@ export default function ExchangeChat() {
                 {messages.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-xs text-on-surface-variant bg-surface-container/60 px-4 py-2 rounded-full inline-block">
-                      Diga olá para @{otherParticipantName} e combinem os detalhes do empréstimo do livro! 👋✨
+                      Escolha uma mensagem pronta abaixo para falar com @{otherParticipantName}! 👋✨
                     </p>
                   </div>
                 ) : (
                   messages.map((msg) => {
                     const isMe = msg.senderId === user?.uid;
+                    const isSystem = msg.senderId === 'system';
+                    const sender = senderInfo(msg);
+                    const text = messageText(msg);
+                    if (!text) return null;
+                    if (isSystem) {
+                      return (
+                        <div key={msg.id} className="text-center">
+                          <p className="text-xs text-on-surface-variant bg-surface-container/60 px-4 py-2 rounded-2xl inline-block">{text}</p>
+                        </div>
+                      );
+                    }
                     return (
                       <div key={msg.id} className={`flex items-end gap-2 max-w-[85%] ${isMe ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
                         {!isMe && (
                           <div className="w-7 h-7 rounded-full bg-primary-container shrink-0 overflow-hidden border border-surface">
-                            {msg.senderAvatar ? (
-                              <img src={msg.senderAvatar} alt={msg.senderName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            {sender.avatar ? (
+                              <img src={sender.avatar} alt={sender.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
                               <User className="w-4 h-4 m-1.5 text-primary" />
                             )}
@@ -365,9 +381,9 @@ export default function ExchangeChat() {
                             : 'bg-surface-container-high text-on-surface rounded-bl-xs'
                         }`}>
                           {!isMe && (
-                            <span className="block text-[10px] font-bold text-secondary mb-0.5">@{msg.senderName}</span>
+                            <span className="block text-[10px] font-bold text-secondary mb-0.5">@{sender.name}</span>
                           )}
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                          <p className="whitespace-pre-wrap leading-relaxed">{text}</p>
                         </div>
                       </div>
                     );
@@ -376,51 +392,41 @@ export default function ExchangeChat() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Chat Input Bar */}
-              <div className="p-3 bg-surface-container/90 backdrop-blur-md border-t border-outline-variant/30 relative">
-                
-                {/* Quick Emoji Bar */}
-                {showEmojiPicker && (
-                  <div className="absolute bottom-16 left-4 bg-surface-container-lowest p-2 rounded-2xl border border-outline-variant shadow-lg flex gap-2 animate-in fade-in slide-in-from-bottom-2 z-50">
-                    {['🤩', '✨', '📖', '🤝', '👍', '🎉', '❤️', '📚'].map(emoji => (
+              {/* Mensagens prontas (sem texto livre) */}
+              <div className="bg-surface-container/90 backdrop-blur-md border-t border-outline-variant/30">
+                <div className="max-w-[800px] mx-auto p-3 space-y-2">
+                  <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="Tipos de mensagem">
+                    {(Object.keys(CHAT_PRESET_GROUPS) as ChatPreset['group'][]).map(g => (
                       <button
-                        key={emoji}
+                        key={g}
                         type="button"
-                        onClick={() => addEmoji(emoji)}
-                        className="text-lg hover:scale-125 transition-transform p-1 cursor-pointer"
+                        role="tab"
+                        aria-selected={openGroup === g}
+                        onClick={() => setOpenGroup(g)}
+                        className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer ${
+                          openGroup === g
+                            ? 'bg-secondary-container text-on-secondary-container'
+                            : 'bg-surface-container-high text-on-surface-variant hover:text-primary'
+                        }`}
                       >
-                        {emoji}
+                        {CHAT_PRESET_GROUPS[g]}
                       </button>
                     ))}
                   </div>
-                )}
-
-                <form onSubmit={handleSendMessage} className="max-w-[800px] mx-auto flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="p-2 text-primary hover:bg-surface-container-high rounded-full transition-colors cursor-pointer"
-                    title="Inserir Emoji"
-                  >
-                    <Smile className="w-5 h-5" />
-                  </button>
-
-                  <input
-                    type="text"
-                    placeholder={`Enviar mensagem para @${otherParticipantName}...`}
-                    value={newMessageText}
-                    onChange={(e) => setNewMessageText(e.target.value)}
-                    className="flex-1 bg-surface px-4 py-2.5 rounded-full border border-outline-variant/50 text-xs sm:text-sm text-on-surface focus:outline-none focus:border-primary shadow-inner"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={isSending || !newMessageText.trim()}
-                    className="w-9 h-9 bg-primary text-on-primary rounded-full flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 cursor-pointer shrink-0"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </form>
+                  <div className="flex flex-wrap gap-2">
+                    {CHAT_PRESETS.filter(p => p.group === openGroup).map(preset => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        disabled={isSending}
+                        onClick={() => handleSendPreset(preset)}
+                        className="px-4 py-2.5 rounded-2xl bg-primary text-on-primary text-xs sm:text-sm shadow-sm hover:scale-[1.02] active:scale-95 transition-transform disabled:opacity-50 cursor-pointer text-left"
+                      >
+                        {preset.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </>
           ) : (
