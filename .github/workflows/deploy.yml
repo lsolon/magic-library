@@ -24,6 +24,14 @@ jobs:
         env:
           VITE_BASE_PATH: /magic-library/
 
+      # Demonstração (3 alunos fictícios, sem login) em /magic-library/demo/
+      # Mesmo código do app, com o Firebase trocado por um banco de mentira no navegador.
+      - name: Build demo
+        run: npx vite build --outDir dist/demo --emptyOutDir false
+        env:
+          VITE_BASE_PATH: /magic-library/demo/
+          VITE_DEMO: 'true'
+
       - name: Deploy via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -43,7 +51,7 @@ jobs:
           script: |
             set -e
             cd /var/www/approutinetech/dist/magic-library
-            chmod -R 755 assets
+            chmod -R 755 assets demo
             npm install --omit=dev
             pm2 restart magic-library || pm2 start server.cjs --name magic-library
             pm2 save
