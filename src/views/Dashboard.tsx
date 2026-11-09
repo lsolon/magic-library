@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAiSearchLimit } from '../lib/useAiSearchLimit';
+import { authFetch } from '../lib/api';
 import { calculateStatsFromBooks, GamificationStats } from '../lib/gamification';
 
 export default function Dashboard() {
@@ -70,14 +71,11 @@ export default function Dashboard() {
     setSearchResult(null);
 
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/search-book`.replace('//', '/'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query: searchQuery })
-      });
+      const res = await authFetch('api/search-book', { query: searchQuery });
 
+      if (res.status === 429) {
+        throw new Error('Você atingiu o limite de buscas por hoje. Tente novamente mais tarde.');
+      }
       if (!res.ok) {
         throw new Error('Falha ao buscar as informações do livro.');
       }

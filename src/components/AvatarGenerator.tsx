@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authFetch } from '../lib/api';
 import { Sparkles, Dice5, Upload, Wand2, AlertTriangle, Palette, Image as ImageIcon, Trash2, CheckCircle2 } from 'lucide-react';
 
 interface AvatarGeneratorProps {
@@ -87,11 +88,11 @@ export function AvatarGenerator({
     setSuccessMsg('');
 
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/generate-gemini-avatar`.replace('//', '/'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: geminiPrompt })
-      });
+      const res = await authFetch('api/generate-gemini-avatar', { prompt: geminiPrompt });
+      if (res.status === 429) {
+        setErrorMsg('Você atingiu o limite de avatares por hoje. Tente novamente amanhã.');
+        return;
+      }
       const data = await res.json();
       if (data.avatarUrl) {
         onSelectAvatar(data.avatarUrl);
@@ -125,14 +126,17 @@ export function AvatarGenerator({
         const mimeType = file.type || 'image/jpeg';
 
         try {
-          const res = await fetch(`${import.meta.env.BASE_URL}api/validate-avatar`.replace('//', '/'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: base64String, mimeType })
-          });
-          const data = await res.json();
+          const res = await authFetch('api/validate-avatar', { imageBase64: base64String, mimeType });
+          const data = await res.json().catch(() => null);
 
-          if (data.isRealPhoto) {
+          // Só aceita se a análise respondeu de verdade; qualquer falha recusa a imagem
+          if (!res.ok || !data || typeof data.isRealPhoto !== 'boolean') {
+            setErrorMsg(
+              res.status === 429
+                ? 'Você atingiu o limite de envios de imagem por hoje. Escolha um avatar pronto.'
+                : 'Não foi possível validar a imagem agora. Tente de novo mais tarde ou escolha um avatar pronto.'
+            );
+          } else if (data.isRealPhoto) {
             setErrorMsg('⚠️ Fotos reais de pessoas não são permitidas! O reino mágico exige avatares ilustrados, desenhos ou avatares gerados por IA.');
           } else {
             const uploadedUrl = reader.result as string;
@@ -143,10 +147,8 @@ export function AvatarGenerator({
           }
         } catch (apiErr) {
           console.error(apiErr);
-          const uploadedUrl = reader.result as string;
-          onSelectAvatar(uploadedUrl);
-          onSaveAvatar(uploadedUrl);
-          setSuccessMsg('Avatar carregado e salvo com sucesso!');
+          // Falha de rede ou de login: não salva a imagem sem validação
+          setErrorMsg('Não foi possível validar a imagem agora. Tente de novo mais tarde ou escolha um avatar pronto.');
         } finally {
           setIsValidating(false);
         }

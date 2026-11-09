@@ -5,6 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { MercadoPagoConfig, Preference } from "mercadopago";
 import dotenv from "dotenv";
 import fs from "fs";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 // If we are running from the dist folder, or NODE_ENV is production, load .env.production
 const isDist = typeof __dirname !== 'undefined' && __dirname.includes('dist');
@@ -44,12 +45,76 @@ function getAI() {
   return aiClient;
 }
 
+// ---------------------------------------------------------------------------
+// Autenticação (token de login do Firebase) e limite de uso por usuário
+// ---------------------------------------------------------------------------
+// ID público do projeto Firebase (o mesmo que vai no app); pode ser trocado por env.
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "gen-lang-client-0404948919";
+// FIREBASE_JWKS_URL existe só para testes locais; em produção usa as chaves públicas do Google.
+const firebaseJwks = createRemoteJWKSet(
+  new URL(
+    process.env.FIREBASE_JWKS_URL ||
+      "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+  )
+);
+
+async function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!token) {
+    return res.status(401).json({ error: "Faça login para continuar." });
+  }
+  try {
+    const { payload } = await jwtVerify(token, firebaseJwks, {
+      issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,
+      audience: FIREBASE_PROJECT_ID,
+    });
+    if (!payload.sub) throw new Error("token sem sub");
+    (req as any).uid = payload.sub;
+    (req as any).userEmail = typeof payload.email === "string" ? payload.email : undefined;
+    next();
+  } catch {
+    res.status(401).json({ error: "Sessão inválida. Entre novamente." });
+  }
+}
+
+// Limite simples em memória, por usuário (o servidor roda em um único processo pm2).
+function rateLimit(max: number, windowMs: number) {
+  const hits = new Map<string, { count: number; reset: number }>();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of hits) if (v.reset <= now) hits.delete(k);
+  }, 10 * 60 * 1000).unref();
+
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const uid = (req as any).uid as string;
+    const now = Date.now();
+    let entry = hits.get(uid);
+    if (!entry || entry.reset <= now) {
+      entry = { count: 0, reset: now + windowMs };
+      hits.set(uid, entry);
+    }
+    if (entry.count >= max) {
+      res.set("Retry-After", String(Math.ceil((entry.reset - now) / 1000)));
+      return res.status(429).json({ error: "Limite de uso atingido. Tente novamente mais tarde." });
+    }
+    entry.count++;
+    next();
+  };
+}
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+const AVATAR_STYLES = ["bottts", "avataaars", "lorelei", "pixel-art", "micah"];
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3002;
 
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  // Corpo pequeno por padrão; só a validação de avatar recebe imagem (até 2 MB).
+  const smallJson = express.json({ limit: '100kb' });
+  app.use((req, res, next) => (req.path.endsWith('/validate-avatar') ? next() : smallJson(req, res, next)));
+  app.use(express.urlencoded({ limit: '100kb', extended: true }));
 
   // API routes
   const apiRouter = express.Router();
@@ -65,9 +130,10 @@ async function startServer() {
     }
   }
 
-  apiRouter.post("/create-preference", async (req, res) => {
+  apiRouter.post("/create-preference", requireAuth, rateLimit(10, HOUR), async (req, res) => {
     try {
-      const { plan, userEmail } = req.body;
+      const { plan } = req.body;
+      const userEmail = (req as any).userEmail; // do token de login, não do corpo
       let title = "";
       let price = 0;
 
@@ -114,7 +180,7 @@ async function startServer() {
       res.json({ init_point: response.init_point });
     } catch (err: any) {
       console.error(err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: "Erro interno. Tente novamente." });
     }
   });
 
@@ -122,11 +188,11 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  apiRouter.post("/search-book", async (req, res) => {
+  apiRouter.post("/search-book", requireAuth, rateLimit(10, DAY), async (req, res) => {
     try {
       const { query } = req.body;
-      if (!query) {
-        return res.status(400).json({ error: "Missing query" });
+      if (typeof query !== "string" || !query.trim() || query.length > 200) {
+        return res.status(400).json({ error: "Busca inválida." });
       }
 
       const response = await getAI().models.generateContent({
@@ -187,15 +253,19 @@ async function startServer() {
       }
     } catch (err: any) {
       console.error(err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: "Erro interno. Tente novamente." });
     }
   });
 
-  apiRouter.post("/validate-avatar", async (req, res) => {
+  apiRouter.post("/validate-avatar", requireAuth, rateLimit(10, DAY), express.json({ limit: '2mb' }), async (req, res) => {
     try {
       const { imageBase64, mimeType } = req.body;
-      if (!imageBase64) {
-        return res.status(400).json({ error: "Missing image" });
+      const allowedMime = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (typeof imageBase64 !== "string" || !imageBase64 || imageBase64.length > 1_900_000) {
+        return res.status(400).json({ error: "Imagem inválida ou grande demais." });
+      }
+      if (mimeType && !allowedMime.includes(mimeType)) {
+        return res.status(400).json({ error: "Tipo de imagem não permitido." });
       }
 
       const response = await getAI().models.generateContent({
@@ -226,19 +296,20 @@ async function startServer() {
       if (text) {
         res.json(JSON.parse(text));
       } else {
-        res.json({ isRealPhoto: false, reason: "Análise concluída." });
+        // Sem resposta da análise: não aprovar a imagem
+        res.status(502).json({ error: "Não foi possível analisar a imagem." });
       }
     } catch (err: any) {
       console.error(err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: "Erro interno. Tente novamente." });
     }
   });
 
-  apiRouter.post("/generate-gemini-avatar", async (req, res) => {
+  apiRouter.post("/generate-gemini-avatar", requireAuth, rateLimit(10, DAY), async (req, res) => {
     try {
       const { prompt } = req.body;
-      if (!prompt) {
-        return res.status(400).json({ error: "Missing prompt" });
+      if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 200) {
+        return res.status(400).json({ error: "Descrição inválida." });
       }
 
       const response = await getAI().models.generateContent({
@@ -260,15 +331,17 @@ async function startServer() {
       const text = response.text;
       if (text) {
         const parsed = JSON.parse(text);
-        const avatarUrl = `https://api.dicebear.com/7.x/${parsed.style || 'bottts'}/svg?seed=${encodeURIComponent(parsed.seed || prompt)}`;
-        res.json({ avatarUrl, style: parsed.style, seed: parsed.seed });
+        const style = AVATAR_STYLES.includes(parsed.style) ? parsed.style : 'bottts';
+        const seed = String(parsed.seed || prompt).slice(0, 100);
+        const avatarUrl = `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(seed)}`;
+        res.json({ avatarUrl, style, seed });
       } else {
         const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(prompt)}`;
         res.json({ avatarUrl, style: 'bottts', seed: prompt });
       }
     } catch (err: any) {
       console.error(err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: "Erro interno. Tente novamente." });
     }
   });
 
