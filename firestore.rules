@@ -25,10 +25,15 @@ service cloud.firestore {
               && d.avatarUrl.matches('^https://api\\.dicebear\\.com/7\\.x/(bottts|adventurer|fun-emoji|thumbs|big-smile|lorelei)/svg\\?seed=[A-Za-z0-9_-]{1,40}$'));
       }
       allow create: if signedIn() && request.auth.uid == userId
-        && !request.resource.data.keys().hasAny(['isSubscribed'])
+        && !request.resource.data.keys().hasAny(['isSubscribed', 'band'])
         && avatarOk(request.resource.data);
+      // Faixa escolar (fund1 | fund2 | medio): só o administrador define; o aluno não altera.
+      function bandOk(d) { return d.band in ['fund1', 'fund2', 'medio']; }
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['band'])
+        && bandOk(request.resource.data);
       allow update: if signedIn() && request.auth.uid == userId
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSubscribed', 'createdAt'])
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isSubscribed', 'createdAt', 'band'])
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl'])
             || avatarOk(request.resource.data))
         // savedAvatars (legado do gerador de avatar) não pode mais ser gravado

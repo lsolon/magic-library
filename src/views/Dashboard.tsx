@@ -12,9 +12,12 @@ import { db } from '../lib/firebase';
 import { useAiSearchLimit } from '../lib/useAiSearchLimit';
 import { authFetch } from '../lib/api';
 import { calculateStatsFromBooks, GamificationStats } from '../lib/gamification';
+import { useBand } from '../lib/useBand';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const band = useBand();
+  const { copy, features } = band;
   const firstName = user?.displayName?.split(' ')[0] || 'Explorador(a) de Mundos';
   const [latestBook, setLatestBook] = useState<any>(null);
   const [userBooks, setUserBooks] = useState<any[]>([]);
@@ -97,12 +100,12 @@ export default function Dashboard() {
       <main className="max-w-[1200px] mx-auto px-6 py-6 flex flex-col gap-8">
         {/* Welcome Section */}
         <section className="text-center mt-2">
-          <h2 className="font-headline-xl text-primary mb-2">Olá, {firstName}!</h2>
-          <p className="font-body-lg text-on-surface-variant">Pronto para uma nova aventura mágica hoje?</p>
+          <h2 className="font-headline-xl text-primary mb-2">{copy.greeting(firstName)}</h2>
+          <p className="font-body-lg text-on-surface-variant">{copy.subtitle}</p>
         </section>
 
         {/* Missão do Dia (Hero Card) */}
-        <section className="w-full rounded-[2rem] bg-gradient-to-br from-primary-container to-inverse-primary p-6 shadow-[0_8px_30px_rgba(0, 229, 255, 0.2)] relative overflow-hidden group">
+        <section className={`w-full rounded-[2rem] p-6 ${features.playfulHero ? 'bg-gradient-to-br from-primary-container to-inverse-primary' : 'bg-surface-container border border-outline-variant'} shadow-[0_8px_30px_rgba(0, 229, 255, 0.2)] relative overflow-hidden group`}>
           <div className="absolute -top-10 -right-10 w-32 h-32 bg-surface-container-high/60 rounded-full blur-xl pointer-events-none"></div>
           <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-secondary-container/30 rounded-full blur-2xl pointer-events-none"></div>
           <div className="relative z-10 flex flex-col items-center text-center gap-4">
@@ -110,26 +113,27 @@ export default function Dashboard() {
               <BookOpen className="w-8 h-8 text-primary" />
             </div>
             <div>
-              <h3 className="font-headline-lg-mobile text-on-primary-container">Missão do Dia</h3>
+              <h3 className="font-headline-lg-mobile text-on-primary-container">{copy.missionTitle}</h3>
               <p className="font-body-md text-on-primary-container/80 mt-1">
                 {latestBook?.bookDetails?.title
-                  ? `Leia mais um pouco de "${latestBook.bookDetails.title}" e ganhe poeira estelar!`
-                  : "Adicione um novo livro à sua estante para começar sua jornada!"}
+                  ? copy.missionWithBook(latestBook.bookDetails.title)
+                  : copy.missionNoBook}
               </p>
             </div>
             <Link 
               to={latestBook ? `/book/${latestBook.bookId}` : "/add-book"} 
               className="mt-2 bg-secondary-container text-on-secondary-container font-label-lg px-8 py-3 rounded-full shadow-[0_4px_15px_rgba(252,212,0,0.4)] hover:scale-105 transition-transform active:scale-95"
             >
-              {latestBook ? 'Continuar Aventura' : 'Começar Aventura'}
+              {latestBook ? copy.missionCta : copy.missionCtaEmpty}
             </Link>
           </div>
         </section>
 
-        {/* Mapa da Aventura (Progresso) */}
+        {/* Mapa da Aventura (Progresso) — Fundamental I e II */}
+        {features.adventureMap && (
         <section className="w-full bg-surface-container rounded-[2rem] p-6 shadow-sm border border-white/50 relative">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-headline-lg-mobile text-primary">Mapa da Aventura</h3>
+            <h3 className="font-headline-lg-mobile text-primary">{copy.progressTitle}</h3>
             <div className="flex items-center gap-1 bg-surface rounded-full px-3 py-1 shadow-sm">
               <Sparkles className="w-4 h-4 text-secondary fill-secondary" />
               <span className="font-label-lg text-secondary">Nível {stats.level}</span>
@@ -169,10 +173,45 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* Livros Mágicos (Carrossel) */}
+        {/* Painel de progresso (números) — Fundamental II e Médio */}
+        {features.statsPanel && (
+          <section className="w-full bg-surface-container rounded-[2rem] p-6 border border-outline-variant">
+            {!features.adventureMap && (
+              <h3 className="font-headline-lg-mobile text-primary mb-4">{copy.progressTitle}</h3>
+            )}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-surface rounded-2xl p-4">
+                <div className="font-headline-lg text-on-surface">{stats.completedBooks}</div>
+                <div className="font-label-lg text-on-surface-variant">livros lidos</div>
+              </div>
+              <div className="bg-surface rounded-2xl p-4">
+                <div className="font-headline-lg text-on-surface">{stats.totalPagesRead}</div>
+                <div className="font-label-lg text-on-surface-variant">páginas</div>
+              </div>
+              <div className="bg-surface rounded-2xl p-4">
+                <div className="font-headline-lg text-on-surface">{stats.level}</div>
+                <div className="font-label-lg text-on-surface-variant">nível</div>
+              </div>
+            </div>
+            {!features.adventureMap && (
+              <div className="mt-4">
+                <div className="flex justify-between font-body-sm text-on-surface-variant mb-1">
+                  <span>{xpIntoLevel} / 150 XP</span>
+                  <span>próximo nível: {stats.level + 1}</span>
+                </div>
+                <div className="w-full bg-surface-variant rounded-full h-2">
+                  <div className="bg-primary h-2 rounded-full transition-all duration-500" style={{ width: `${levelProgressPct}%` }}></div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Estante (Carrossel) */}
         <section className="w-full">
-          <h3 className="font-headline-lg-mobile text-primary mb-4 px-2">Livros Mágicos</h3>
+          <h3 className="font-headline-lg-mobile text-primary mb-4 px-2">{copy.shelfTitle}</h3>
           <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-4 px-2 -mx-2 snap-x snap-mandatory">
             {userBooks.slice(0, 10).map((ub) => (
               <Link 
@@ -214,7 +253,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div>
-                <h4 className="font-body-lg text-on-surface text-center">Explorar Mais</h4>
+                <h4 className="font-body-lg text-on-surface text-center">{copy.shelfAdd}</h4>
               </div>
             </Link>
           </div>

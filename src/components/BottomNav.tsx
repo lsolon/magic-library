@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Compass, BookOpen, Package, User, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useBand } from '../lib/useBand';
 
 export function BottomNav() {
   const location = useLocation();
+  const homeLabel = useBand().copy.navHome;
 
   const navItems = [
-    { path: '/dashboard', icon: Compass, label: 'Mapa' },
+    { path: '/dashboard', icon: Compass, label: homeLabel },
     { path: '/library', icon: BookOpen, label: 'Livros' },
     { path: '/clubs', icon: Package, label: 'Grupos' },
     { path: '/chat', icon: MessageSquare, label: 'Chat' },

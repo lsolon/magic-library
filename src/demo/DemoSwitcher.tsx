@@ -14,7 +14,7 @@ export default function DemoSwitcher() {
         {DEMO_USERS.map(u => (
           <button key={u.uid} onClick={() => go(u.uid)} aria-pressed={me === u.uid}
             className={`px-3 py-1 rounded-full font-bold cursor-pointer ${me === u.uid ? 'bg-primary text-on-primary' : 'bg-white/10 hover:bg-white/20'}`}>
-            {u.displayName}
+            {u.displayName} <span className="opacity-70 font-normal">· {u.grade}</span>
           </button>
         ))}
         <button onClick={() => { if (window.confirm('Zerar a demonstração?')) { resetDemoDb(); window.location.hash = '#/dashboard'; window.location.reload(); } }}
