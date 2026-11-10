@@ -3,14 +3,16 @@ import { useAuth } from '../contexts/AuthContext';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { safeAvatar } from '../lib/avatars';
 import { cn } from '../lib/utils';
+import { useBand } from '../lib/useBand';
 
 export function TopBar(props: any) {
   const { user, userAvatar, logout } = useAuth();
+  const homeLabel = useBand().copy.navHome;
   const location = useLocation();
   const navigate = useNavigate();
 
   const navItems = [
-    { path: '/dashboard', icon: Compass, label: 'Mapa' },
+    { path: '/dashboard', icon: Compass, label: homeLabel },
     { path: '/library', icon: BookOpen, label: 'Livros' },
     { path: '/clubs', icon: Package, label: 'Grupos' },
     { path: '/chat', icon: MessageSquare, label: 'Chat' },

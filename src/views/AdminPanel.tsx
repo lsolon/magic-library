@@ -2,7 +2,8 @@ import { safeAvatar } from '../lib/avatars';
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
+import { BANDS, BAND_IDS, parseBand } from '../lib/bands';
 import { db } from '../lib/firebase';
 import { Shield, Users, Clock, Star, Activity } from 'lucide-react';
 import { TopBar } from '../components/TopBar';
@@ -14,6 +15,19 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [accessLogs, setAccessLogs] = useState<any[]>([]);
   const [totalAccesses, setTotalAccesses] = useState(0);
+  const [bandError, setBandError] = useState('');
+
+  // Define a faixa escolar do aluno (a regra do Firestore só permite ao administrador)
+  const changeBand = async (uid: string, band: string) => {
+    setBandError('');
+    try {
+      await updateDoc(doc(db, 'users', uid), { band });
+      setUsers(prev => prev.map(u => (u.id === uid ? { ...u, band } : u)));
+    } catch (err) {
+      console.error(err);
+      setBandError('Não foi possível salvar a faixa. Confira se o firestore.rules atualizado foi publicado.');
+    }
+  };
 
   useEffect(() => {
 
@@ -88,6 +102,7 @@ export default function AdminPanel() {
             </div>
           </div>
 
+          {bandError && <p className="text-error text-sm mb-3">{bandError}</p>}
           {loading ? (
             <div className="flex justify-center items-center py-12">
               <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -110,6 +125,18 @@ export default function AdminPanel() {
                       <span>Nome Real: {u.realName || 'Não informado'}</span>
                       <span className="flex items-center gap-1"><Star className="w-3.5 h-3.5 text-secondary" /> Nível {u.level || 1}</span>
                     </div>
+                    <label className="text-xs text-on-surface-variant mt-2 flex items-center gap-2">
+                      Faixa escolar
+                      <select
+                        value={parseBand(u.band)}
+                        onChange={e => changeBand(u.id, e.target.value)}
+                        className="bg-surface-container-highest border border-outline-variant rounded-lg px-2 py-1 text-on-surface"
+                      >
+                        {BAND_IDS.map(id => (
+                          <option key={id} value={id}>{BANDS[id].label} ({BANDS[id].grades})</option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                   <div className="text-right flex flex-col items-end">
                     <div className="flex items-center gap-1.5 text-on-surface-variant text-sm font-medium bg-surface-container-highest px-3 py-1 rounded-lg">

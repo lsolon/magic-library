@@ -1,10 +1,11 @@
 /** Dados fictícios do ambiente de demonstração (3 alunos, 1 turma, 6 livros). Sem dados reais. */
 import { defaultAvatarFor } from '../lib/avatars';
+import type { BandId } from '../lib/bands';
 
-export const DEMO_USERS = [
-  { uid: 'ana', displayName: 'Ana', email: 'ana@demo.invalid', avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=fenix' },
-  { uid: 'bruno', displayName: 'Bruno', email: 'bruno@demo.invalid', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=dragao' },
-  { uid: 'clara', displayName: 'Clara', email: 'clara@demo.invalid', avatar: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=coruja' },
+export const DEMO_USERS: Array<{ uid: string; displayName: string; email: string; avatar: string; band: BandId; grade: string }> = [
+  { uid: 'ana', displayName: 'Ana', email: 'ana@demo.invalid', avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=fenix', band: 'fund1', grade: '3º ano' },
+  { uid: 'bruno', displayName: 'Bruno', email: 'bruno@demo.invalid', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=dragao', band: 'fund2', grade: '7º ano' },
+  { uid: 'clara', displayName: 'Clara', email: 'clara@demo.invalid', avatar: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=coruja', band: 'medio', grade: '1ª série EM' },
 ];
 
 type Ts = { fromMillis(ms: number): any };
@@ -18,7 +19,7 @@ export function buildSeed(Timestamp: Ts): Record<string, Record<string, any>> {
     out[`users/${u.uid}`] = {
       displayName: u.displayName, realName: u.displayName, avatarUrl: u.avatar || defaultAvatarFor(u.uid),
       magicalTitle: 'Explorador(a) de Mundos', favoriteGenres: 'Aventura, Mistério', bio: '',
-      level: 1, xp: 0, stars: 0, isSubscribed: true, createdAt: ts(2)
+      band: u.band, level: 1, xp: 0, stars: 0, isSubscribed: true, createdAt: ts(2)
     };
     out[`usernames/u_${encodeURIComponent(u.displayName.toLowerCase())}`] = { uid: u.uid, displayName: u.displayName };
   });

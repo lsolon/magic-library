@@ -150,3 +150,72 @@
     100% { transform: translateY(0px); }
   }
 }
+
+/* ===== Perfis por faixa escolar (data-band em <html>, definido no AuthContext) =====
+   fund1 = tema mágico padrão (definido em @theme acima).
+   fund2 = aventura (verde-água e laranja); medio = sóbrio, sem brilho nem animações. */
+html[data-band="fund2"] {
+  --color-primary: #2dd4bf;
+  --color-primary-container: #0b4a45;
+  --color-on-primary-container: #b7f5ec;
+  --color-secondary: #fb923c;
+  --color-secondary-container: #5a2c0a;
+  --color-on-secondary-container: #ffd9b8;
+  --color-tertiary: #a3e635;
+  --color-tertiary-container: #2f4a0a;
+  --color-on-tertiary-container: #d9f99d;
+  --color-background: #0a1a1f;
+  --color-on-background: #e0f2f1;
+  --color-surface: #11262c;
+  --color-on-surface: #e0f2f1;
+  --color-surface-variant: #21424d;
+  --color-on-surface-variant: #a7c7cc;
+  --color-surface-container-lowest: #07141a;
+  --color-surface-container-low: #0e2128;
+  --color-surface-container: #16313a;
+  --color-surface-container-high: #1e3f4a;
+  --color-surface-container-highest: #285264;
+  --color-outline: #5f8a97;
+  --color-outline-variant: #2f5360;
+}
+html[data-band="fund2"] body {
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(20, 130, 120, 0.22), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(200, 100, 30, 0.18), transparent 25%);
+}
+
+html[data-band="medio"] {
+  --color-primary: #818cf8;
+  --color-primary-container: #272a5c;
+  --color-on-primary-container: #dfe2ff;
+  --color-secondary: #fbbf24;
+  --color-secondary-container: #4a3a0a;
+  --color-on-secondary-container: #fde9a8;
+  --color-tertiary: #38bdf8;
+  --color-tertiary-container: #0c3a52;
+  --color-on-tertiary-container: #c7ecff;
+  --color-background: #0f1115;
+  --color-on-background: #e6e8ee;
+  --color-surface: #181b22;
+  --color-on-surface: #e6e8ee;
+  --color-surface-variant: #272b35;
+  --color-on-surface-variant: #a9afbd;
+  --color-surface-container-lowest: #0b0d11;
+  --color-surface-container-low: #14171d;
+  --color-surface-container: #1d2129;
+  --color-surface-container-high: #262b35;
+  --color-surface-container-highest: #323845;
+  --color-outline: #7a8294;
+  --color-outline-variant: #3a4050;
+}
+html[data-band="medio"] body { background-image: none; }
+html[data-band="medio"] .float-anim,
+html[data-band="medio"] .pulse-anim,
+html[data-band="medio"] .progress-glow,
+html[data-band="medio"] .shimmer { animation: none; }
+html[data-band="medio"] .magic-shadow { box-shadow: none; }
+html[data-band="medio"] .glass-panel { border-color: rgba(255, 255, 255, 0.08); }
+
+@media (prefers-reduced-motion: reduce) {
+  .float-anim, .pulse-anim, .progress-glow, .shimmer { animation: none; }
+}

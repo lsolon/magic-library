@@ -13,6 +13,7 @@ import {
 import { auth, db } from '../lib/firebase';
 import { collection, doc, setDoc, getDoc, onSnapshot, serverTimestamp, addDoc } from 'firebase/firestore';
 import { claimUsername } from '../lib/usernames';
+import { BandId, DEFAULT_BAND, parseBand } from '../lib/bands';
 
 interface AuthContextType {
   user: User | null;
@@ -22,6 +23,7 @@ interface AuthContextType {
   isTrialExpired: boolean;
   trialDaysLeft: number;
   isSubscribed: boolean;
+  band: BandId;
   signInWithGoogle: () => Promise<void>;
   registerWithEmail: (email: string, password: string, name: string, realName: string) => Promise<void>;
   loginWithEmail: (email: string, password: string) => Promise<void>;
@@ -40,6 +42,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isTrialExpired, setIsTrialExpired] = useState(false);
   const [trialDaysLeft, setTrialDaysLeft] = useState(30);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [band, setBand] = useState<BandId>(DEFAULT_BAND);
+
+  // Aplica o tema da faixa escolar (ver index.css: html[data-band=...])
+  useEffect(() => {
+    document.documentElement.dataset.band = band;
+  }, [band]);
 
 
   useEffect(() => {
@@ -70,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (docSnap.exists()) {
             setNeedsProfileSetup(false);
             const data = docSnap.data();
+            setBand(parseBand(data.band));
 
             // Usuários antigos: garante o registro do apelido (melhor esforço, uma vez por sessão)
             if (data.displayName && !sessionStorage.getItem('username_claimed_' + currentUser.uid)) {
@@ -213,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userAvatar, loading, needsProfileSetup, isTrialExpired, trialDaysLeft, isSubscribed, signInWithGoogle, registerWithEmail, loginWithEmail, logout, completeProfile }}>
+    <AuthContext.Provider value={{ user, userAvatar, loading, needsProfileSetup, isTrialExpired, trialDaysLeft, isSubscribed, band, signInWithGoogle, registerWithEmail, loginWithEmail, logout, completeProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );
