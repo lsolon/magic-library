@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { BookOpen, Sparkles, Shield, Compass, Star, ChevronRight, Users, Crown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { VersionBadge } from '../components/VersionBadge';
 
 export default function Landing() {
   const { user } = useAuth();
@@ -203,6 +204,7 @@ export default function Landing() {
 
         </div>
       </main>
+      <VersionBadge className="relative z-10 pb-6" />
     </div>
   );
 }
