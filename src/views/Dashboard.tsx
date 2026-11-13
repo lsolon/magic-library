@@ -11,7 +11,7 @@ import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firesto
 import { db } from '../lib/firebase';
 import { useAiSearchLimit } from '../lib/useAiSearchLimit';
 import { authFetch } from '../lib/api';
-import { calculateStatsFromBooks, GamificationStats } from '../lib/gamification';
+import { calculateStatsFromBooks, getLevelInfo, EMPTY_STATS, GamificationStats } from '../lib/gamification';
 import { useBand } from '../lib/useBand';
 
 export default function Dashboard() {
@@ -21,9 +21,10 @@ export default function Dashboard() {
   const firstName = user?.displayName?.split(' ')[0] || 'Explorador(a) de Mundos';
   const [latestBook, setLatestBook] = useState<any>(null);
   const [userBooks, setUserBooks] = useState<any[]>([]);
-  const [stats, setStats] = useState<GamificationStats>({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 });
-  const xpIntoLevel = stats.xp % 150;
-  const levelProgressPct = Math.round((xpIntoLevel / 150) * 100);
+  const [stats, setStats] = useState<GamificationStats>({ ...EMPTY_STATS });
+  const levelInfo = getLevelInfo(stats.xp);
+  const xpIntoLevel = levelInfo.xpIntoLevel;
+  const levelProgressPct = levelInfo.progressPct;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -140,7 +141,7 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="font-body-sm text-on-surface-variant -mt-3 mb-2">
-            {xpIntoLevel} / 150 XP para o Nível {stats.level + 1}
+            {xpIntoLevel} / {levelInfo.xpForNext} XP para o Nível {stats.level + 1}
           </p>
           <div className="relative h-32 w-full flex items-center justify-between px-4">
             {/* Path Line */}
@@ -198,7 +199,7 @@ export default function Dashboard() {
             {!features.adventureMap && (
               <div className="mt-4">
                 <div className="flex justify-between font-body-sm text-on-surface-variant mb-1">
-                  <span>{xpIntoLevel} / 150 XP</span>
+                  <span>{xpIntoLevel} / {levelInfo.xpForNext} XP</span>
                   <span>próximo nível: {stats.level + 1}</span>
                 </div>
                 <div className="w-full bg-surface-variant rounded-full h-2">

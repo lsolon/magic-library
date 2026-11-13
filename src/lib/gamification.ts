@@ -1,6 +1,27 @@
 import { db } from './firebase';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 
+/**
+ * Gamificação focada em LER (e não em cadastrar livros).
+ *
+ * Regras de XP (v2):
+ *  - Cadastrar livro: 0 XP.
+ *  - +1 XP por página lida (limitado ao total de páginas do livro).
+ *  - Concluir um livro ("Lido"): +50 XP, mais 1 XP a cada 10 páginas do livro (bônus total máx. 100).
+ *  - +30 XP pelo primeiro livro concluído de cada gênero novo.
+ *
+ * Níveis: o nível 2 começa em 150 XP e cada nível seguinte pede 50 XP a mais que o anterior
+ * (150, 200, 250...). Limiares acumulados: 150, 350, 600, 900...
+ *
+ * Estrelas: 1 por livro concluído, 1 a cada 500 páginas lidas e 1 a cada 5 livros CONCLUÍDOS.
+ *
+ * Ficam para a Fase 2 (precisam de histórico por dia / novos dados): teto diário de XP,
+ * bônus de dia e semana de leitura, registro de leitura, empréstimos e meta da turma.
+ */
+
+export const COMPLETION_BASE_XP = 50;
+export const COMPLETION_MAX_XP = 100;
+export const NEW_GENRE_XP = 30;
 
 export interface BadgeDef {
   id: string;
@@ -38,12 +59,20 @@ export function calculateBadges(stats: GamificationStats): BadgeDef[] {
       progress: Math.min(1, stats.totalPagesRead / 1000)
     },
     {
-      id: 'collector',
-      name: 'Colecionador',
-      description: 'Adicionou 15 livros à biblioteca.',
+      id: 'living_shelf',
+      name: 'Estante Viva',
+      description: 'Tem 15 livros na estante, e pelo menos 5 já lidos.',
       iconType: 'package',
-      achieved: stats.totalBooks >= 15,
-      progress: Math.min(1, stats.totalBooks / 15)
+      achieved: stats.totalBooks >= 15 && stats.completedBooks >= 5,
+      progress: Math.min(1, (Math.min(stats.totalBooks, 15) / 15 + Math.min(stats.completedBooks, 5) / 5) / 2)
+    },
+    {
+      id: 'genre_explorer',
+      name: 'Explorador de Gêneros',
+      description: 'Terminou livros de 4 gêneros diferentes.',
+      iconType: 'compass',
+      achieved: stats.genresCompleted >= 4,
+      progress: Math.min(1, stats.genresCompleted / 4)
     },
     {
       id: 'wisdom_master',
@@ -63,34 +92,88 @@ export interface GamificationStats {
   totalBooks: number;
   completedBooks: number;
   totalPagesRead: number;
+  genresCompleted: number;
+}
+
+export const EMPTY_STATS: GamificationStats = {
+  level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0, genresCompleted: 0
+};
+
+export interface LevelInfo {
+  level: number;
+  /** XP acumulado dentro do nível atual. */
+  xpIntoLevel: number;
+  /** XP necessário para sair do nível atual. */
+  xpForNext: number;
+  /** Porcentagem (0-100) de progresso dentro do nível. */
+  progressPct: number;
+}
+
+/** XP acumulado necessário para ALCANÇAR o nível n (nível 1 = 0). */
+function levelStartXp(n: number): number {
+  if (n <= 1) return 0;
+  return 100 * (n - 1) + 25 * n * (n - 1); // 150, 350, 600, 900...
+}
+
+export function getLevelInfo(xp: number): LevelInfo {
+  const safeXp = Math.max(0, Math.floor(xp) || 0);
+  let level = 1;
+  while (levelStartXp(level + 1) <= safeXp) level++;
+  const start = levelStartXp(level);
+  const xpForNext = levelStartXp(level + 1) - start;
+  const xpIntoLevel = safeXp - start;
+  return {
+    level,
+    xpIntoLevel,
+    xpForNext,
+    progressPct: Math.min(100, Math.round((xpIntoLevel / xpForNext) * 100))
+  };
+}
+
+export interface UserBookInput {
+  status?: string;
+  pagesRead?: number;
+  totalPages?: number;
+  category?: string;
+  bookDetails?: { totalPages?: number; category?: string } | null;
 }
 
 /**
- * Recalculates and returns user gamification stats based on their reading activity in Firestore.
+ * Calcula as estatísticas a partir dos livros do usuário.
+ * Aceita `totalPages`/`category` direto no item ou dentro de `bookDetails` (como o Dashboard monta).
  */
-export function calculateStatsFromBooks(userBooks: Array<{ status?: string; pagesRead?: number }>): GamificationStats {
+export function calculateStatsFromBooks(userBooks: UserBookInput[]): GamificationStats {
   const totalBooks = userBooks.length;
-  const completedBooks = userBooks.filter(b => b.status === 'Lido').length;
-  const totalPagesRead = userBooks.reduce((sum, b) => sum + (Number(b.pagesRead) || 0), 0);
+  let completedBooks = 0;
+  let totalPagesRead = 0;
+  let pageXp = 0;
+  let completionXp = 0;
+  const genres = new Set<string>();
 
-  // 1. XP Rules:
-  // +20 XP for every book added to library
-  // +1 XP for every page lida
-  // +100 XP bonus for completing a book ("Lido")
-  const xp = (totalBooks * 20) + (totalPagesRead * 1) + (completedBooks * 100);
+  for (const b of userBooks) {
+    const total = Number(b.totalPages ?? b.bookDetails?.totalPages) || 0;
+    const rawRead = Math.max(0, Number(b.pagesRead) || 0);
+    // Não conta mais páginas do que o livro tem (evita digitar 9999 para ganhar XP)
+    const read = total > 0 ? Math.min(rawRead, total) : rawRead;
 
-  // 2. Stars Rules:
-  // +1 Star per completed book
-  // +1 Star for every 500 pages read
-  // +1 Star for every 5 books registered
-  const stars = (completedBooks * 1) + Math.floor(totalPagesRead / 500) + Math.floor(totalBooks / 5);
+    totalPagesRead += read;
+    pageXp += read;
 
-  // 3. Level Rules:
-  // Starts at Level 1 (0 XP)
-  // Reaches Level 2 at 150 XP, Level 3 at 300 XP, etc.
-  const level = Math.max(1, Math.floor(xp / 150) + 1);
+    if (b.status === 'Lido') {
+      completedBooks++;
+      completionXp += Math.min(COMPLETION_MAX_XP, COMPLETION_BASE_XP + Math.floor(total / 10));
+      const genre = String(b.category ?? b.bookDetails?.category ?? '').trim().toLowerCase();
+      if (genre) genres.add(genre);
+    }
+  }
 
-  return { level, xp, stars, totalBooks, completedBooks, totalPagesRead };
+  const genresCompleted = genres.size;
+  const xp = pageXp + completionXp + genresCompleted * NEW_GENRE_XP;
+
+  const stars = completedBooks + Math.floor(totalPagesRead / 500) + Math.floor(completedBooks / 5);
+  const level = getLevelInfo(xp).level;
+
+  return { level, xp, stars, totalBooks, completedBooks, totalPagesRead, genresCompleted };
 }
 
 /**
@@ -100,7 +183,22 @@ export async function syncUserGamificationStats(userId: string): Promise<Gamific
   try {
     const q = query(collection(db, 'user_books'), where('userId', '==', userId));
     const snap = await getDocs(q);
-    const userBooks = snap.docs.map(doc => doc.data() as { status?: string; pagesRead?: number });
+
+    // user_books guarda só o vínculo; total de páginas e gênero ficam em 'books'.
+    const joined = await Promise.all(
+      snap.docs.map(async d => {
+        const ub = d.data() as UserBookInput & { bookId?: string };
+        try {
+          const bookSnap = ub.bookId ? await getDoc(doc(db, 'books', ub.bookId)) : null;
+          if (!bookSnap || !bookSnap.exists()) return null; // vínculo órfão
+          const bd = bookSnap.data() as { totalPages?: number; category?: string };
+          return { ...ub, totalPages: bd.totalPages, category: bd.category } as UserBookInput;
+        } catch {
+          return ub as UserBookInput;
+        }
+      })
+    );
+    const userBooks = joined.filter((b): b is UserBookInput => b !== null);
 
     const stats = calculateStatsFromBooks(userBooks);
 
@@ -115,6 +213,6 @@ export async function syncUserGamificationStats(userId: string): Promise<Gamific
     return stats;
   } catch (err) {
     console.error('Error syncing user gamification stats:', err);
-    return { level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 };
+    return { ...EMPTY_STATS };
   }
 }

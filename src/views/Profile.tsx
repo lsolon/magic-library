@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Trash2, AlertTriangle, Book, Flame, Timer, Package, Crown } from 'lucide-react';
+import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Trash2, AlertTriangle, Book, Flame, Timer, Package, Crown, Compass } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
@@ -8,7 +8,7 @@ import { VersionBadge } from '../components/VersionBadge';
 import { AVATAR_PRESETS, safeAvatar } from '../lib/avatars';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { syncUserGamificationStats, calculateBadges, BadgeDef, GamificationStats } from '../lib/gamification';
+import { syncUserGamificationStats, calculateBadges, getLevelInfo, EMPTY_STATS, NEW_GENRE_XP, BadgeDef, GamificationStats } from '../lib/gamification';
 import { clearAllUserData } from '../lib/dataUtils';
 
 export default function Profile() {
@@ -21,7 +21,7 @@ export default function Profile() {
   const [magicalTitle, setMagicalTitle] = useState('Explorador(a) de Mundos');
   const [favoriteGenres, setFavoriteGenres] = useState('Fantasia, Aventura, Mistério');
   const [bio, setBio] = useState('Amante de livros mágicos e universos fantásticos.');
-  const [stats, setStats] = useState<GamificationStats>({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 });
+  const [stats, setStats] = useState<GamificationStats>({ ...EMPTY_STATS });
   const [badges, setBadges] = useState<BadgeDef[]>([]);
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -40,8 +40,8 @@ export default function Profile() {
 
     try {
       await clearAllUserData(user.uid);
-      setStats({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 });
-      setBadges(calculateBadges({ level: 1, xp: 0, stars: 0, totalBooks: 0, completedBooks: 0, totalPagesRead: 0 }));
+      setStats({ ...EMPTY_STATS });
+      setBadges(calculateBadges({ ...EMPTY_STATS }));
       setSuccessMessage('Todos os seus livros e dados foram apagados com sucesso! ✨');
       setTimeout(() => setSuccessMessage(''), 5000);
     } catch (err) {
@@ -198,12 +198,12 @@ export default function Profile() {
               <div className="w-full mt-4 pt-3 border-t border-surface-variant/60">
                 <div className="flex justify-between items-center text-xs mb-1 font-semibold">
                   <span className="text-primary flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> Nível {stats.level}</span>
-                  <span className="text-on-surface-variant">{stats.xp % 150} / 150 XP p/ próx. nível</span>
+                  <span className="text-on-surface-variant">{getLevelInfo(stats.xp).xpIntoLevel} / {getLevelInfo(stats.xp).xpForNext} XP p/ próx. nível</span>
                 </div>
                 <div className="w-full h-2.5 bg-surface-container-highest rounded-full overflow-hidden border border-surface-variant">
                   <div 
                     className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500 rounded-full"
-                    style={{ width: `${Math.min(100, Math.round(((stats.xp % 150) / 150) * 100))}%` }}
+                    style={{ width: `${getLevelInfo(stats.xp).progressPct}%` }}
                   />
                 </div>
               </div>
@@ -211,17 +211,17 @@ export default function Profile() {
               {/* Ranking Explanation Accordion/Card */}
               <div className="w-full mt-4 p-4 rounded-xl bg-primary-container/20 border border-primary-container/50 text-left space-y-2 text-xs">
                 <div className="font-bold text-primary flex items-center justify-between">
-                  <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-tertiary" /> Como funciona o Ranking?</span>
+                  <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-tertiary" /> Como funciona o XP?</span>
                 </div>
                 <p className="text-on-surface-variant">
-                  O seu **Nível**, **XP** e **Estrelas** são calculados automaticamente conforme você lê e participa da Magic Library:
+                  Seu Nível, XP e Estrelas crescem quando você lê e termina livros. Só cadastrar livros não dá XP!
                 </p>
                 <ul className="space-y-1.5 text-on-surface text-[11px] list-disc list-inside">
-                  <li><strong>+20 XP:</strong> Por cada livro cadastrado na sua biblioteca</li>
                   <li><strong>+1 XP:</strong> Por cada página lida e registrada</li>
-                  <li><strong>+100 XP:</strong> Bônus por concluir a leitura de um livro ("Lido")</li>
-                  <li><strong>⭐️ Estrelas:</strong> Ganhe 1 estrela a cada livro lido, a cada 500 páginas lidas ou a cada 5 livros na biblioteca</li>
-                  <li><strong>🛡️ Nível Mágico:</strong> Você sobe de nível a cada 150 XP acumulados!</li>
+                  <li><strong>+50 XP (e mais um pouco):</strong> Ao terminar um livro ("Lido"). Livros maiores rendem um bônus extra, até 100 XP</li>
+                  <li><strong>+{NEW_GENRE_XP} XP:</strong> No primeiro livro terminado de cada gênero novo</li>
+                  <li><strong>⭐️ Estrelas:</strong> 1 por livro lido, 1 a cada 500 páginas lidas e 1 a cada 5 livros lidos</li>
+                  <li><strong>🛡️ Nível Mágico:</strong> Cada nível pede um pouco mais de XP que o anterior. Quanto mais você lê, mais longe chega!</li>
                 </ul>
               </div>
             </div>
@@ -257,6 +257,7 @@ export default function Profile() {
                                badge.iconType === 'flame' ? Flame :
                                badge.iconType === 'timer' ? Timer :
                                badge.iconType === 'package' ? Package :
+                               badge.iconType === 'compass' ? Compass :
                                badge.iconType === 'crown' ? Crown : Award;
                   return (
                     <div key={badge.id} className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${badge.achieved ? 'bg-primary-container/20 border-primary/30 shadow-sm' : 'bg-surface-container border-surface-variant opacity-60 grayscale'}`}>
