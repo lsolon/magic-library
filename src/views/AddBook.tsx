@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen, Sparkles, Book, User, LayoutGrid, Star, PlusCircle
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { syncUserGamificationStats } from '../lib/gamification';
+import { logReadingProgress } from '../lib/readingLog';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
@@ -75,21 +76,33 @@ export default function AddBook() {
         calculatedProgress = Math.round((numPagesRead / numTotalPages) * 100);
       }
 
+      // Nunca mais páginas do que o livro tem
+      numPagesRead = Math.min(numPagesRead, numTotalPages);
+
       await addDoc(collection(db, 'user_books'), {
         userId: user.uid,
         bookId: bookRef.id,
         status: status, // 'Lido', 'Lendo', 'Desejo'
         progress: calculatedProgress,
         pagesRead: numPagesRead,
+        maxPagesRead: numPagesRead,
         addedAt: serverTimestamp()
       });
+
+      // Páginas informadas no cadastro entram no log do dia (com o teto diário de XP)
+      await logReadingProgress(user.uid, bookRef.id, numPagesRead, 0);
 
       // Update user gamification stats (XP, Stars, Level)
       await syncUserGamificationStats(user.uid);
 
       // Show success and redirect
-      alert('Livro adicionado à sua biblioteca com sucesso! 🎉');
-      navigate('/library');
+      if (status === 'Lido') {
+        alert('Livro adicionado! 🎉 Agora registre sua leitura para ganhar o bônus de conclusão.');
+        navigate(`/book/${bookRef.id}`);
+      } else {
+        alert('Livro adicionado à sua biblioteca com sucesso! 🎉');
+        navigate('/library');
+      }
     } catch (err: any) {
       console.error(err);
       setError('Falha ao adicionar o livro mágico. Tente novamente.');

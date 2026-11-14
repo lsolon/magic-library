@@ -11,7 +11,7 @@ import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firesto
 import { db } from '../lib/firebase';
 import { useAiSearchLimit } from '../lib/useAiSearchLimit';
 import { authFetch } from '../lib/api';
-import { calculateStatsFromBooks, getLevelInfo, EMPTY_STATS, GamificationStats } from '../lib/gamification';
+import { calculateStatsFromBooks, loadActivity, getLevelInfo, EMPTY_STATS, GamificationStats } from '../lib/gamification';
 import { useBand } from '../lib/useBand';
 
 export default function Dashboard() {
@@ -57,7 +57,7 @@ export default function Dashboard() {
         const validBooks = joined.filter(b => b.bookDetails);
 
         setUserBooks(validBooks);
-        setStats(calculateStatsFromBooks(validBooks));
+        setStats(calculateStatsFromBooks(validBooks, await loadActivity(user.uid)));
         setLatestBook(validBooks.find(b => b.status === 'Lendo') || validBooks[0] || null);
       } catch (err) {
         console.error(err);

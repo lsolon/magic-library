@@ -15,6 +15,7 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { syncUserGamificationStats } from '../lib/gamification';
+import { logReadingProgress } from '../lib/readingLog';
 import { findUserByUsername } from '../lib/usernames';
 import { removeBookKeepHistory } from '../lib/bookUtils';
 import { cn } from '../lib/utils';
@@ -195,16 +196,22 @@ export default function Clubs() {
       const progressPct = Math.round((numRead / total) * 100);
 
       if (!snap.empty) {
+        const prev = snap.docs[0].data();
+        const prevMax = Number(prev.maxPagesRead ?? prev.pagesRead) || 0;
+        const newMax = await logReadingProgress(user.uid, book.id, numRead, prevMax);
         await updateDoc(doc(db, 'user_books', snap.docs[0].id), {
           pagesRead: numRead,
+          maxPagesRead: newMax,
           progress: progressPct,
           status: is100 ? 'Lido' : 'Lendo'
         });
       } else {
+        await logReadingProgress(user.uid, book.id, numRead, 0);
         await addDoc(collection(db, 'user_books'), {
           userId: user.uid,
           bookId: book.id,
           pagesRead: numRead,
+          maxPagesRead: numRead,
           progress: progressPct,
           status: is100 ? 'Lido' : 'Lendo',
           addedAt: serverTimestamp()
@@ -214,7 +221,7 @@ export default function Clubs() {
       await syncUserGamificationStats(user.uid);
 
       if (is100) {
-        alert(`🎉 Sensacional! Você atingiu 100% da leitura do livro "${book.title}". O(A) Guardião(ã) do Saber foi notificado(a) e escolherá o próximo destino do livro!`);
+        alert(`🎉 Sensacional! Você atingiu 100% da leitura do livro "${book.title}". O(A) Guardião(ã) do Saber foi notificado(a) e escolherá o próximo destino do livro! Abra o livro na sua estante para registrar sua leitura e ganhar o bônus.`);
       } else {
         alert('Progresso de leitura atualizado com sucesso!');
       }

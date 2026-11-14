@@ -78,6 +78,42 @@ service cloud.firestore {
       allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
+    // Log diário de leitura (páginas novas por dia): só o dono grava e lê (admin também lê).
+    // Só cresce: não há update; o dono pode apagar (limpar dados). Dia no formato AAAA-MM-DD.
+    match /reading_logs/{logId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['userId', 'bookId', 'day', 'pages', 'createdAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.bookId is string
+        && request.resource.data.day is string && request.resource.data.day.size() == 10
+        && request.resource.data.pages is int
+        && request.resource.data.pages >= 1 && request.resource.data.pages <= 2000
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Registro de leitura (nota, sentimento e frase PRIVADA): só o dono e o admin leem.
+    // Id do documento = {uid}_{bookId}. Lista de sentimentos igual a FEELINGS em src/lib/readingLog.ts.
+    match /reading_records/{recordId} {
+      function recordOk(d) {
+        return d.keys().hasOnly(['userId', 'bookId', 'rating', 'feeling', 'note', 'day', 'updatedAt'])
+          && d.userId == request.auth.uid
+          && recordId == request.auth.uid + '_' + d.bookId
+          && d.rating is int && d.rating >= 1 && d.rating <= 5
+          && d.feeling in ['emocionei', 'diverti', 'aprendi', 'curioso', 'tenso', 'inspirado']
+          && d.note is string && d.note.size() <= 140
+          && d.day is string && d.day.size() == 10;
+      }
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if signedIn() && recordOk(request.resource.data);
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && recordOk(request.resource.data)
+        && request.resource.data.day == resource.data.day;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
     // Grupos: só os membros leem. Entrar = acrescentar a si mesmo (o código vive em
     // club_codes e só quem o conhece descobre o id do grupo). Só o dono altera o resto.
     match /clubs/{clubId} {

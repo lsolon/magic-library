@@ -9,6 +9,8 @@ import {
 import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { syncUserGamificationStats } from '../lib/gamification';
+import { logReadingProgress, getReadingRecord, saveReadingRecord, ReadingRecordInput } from '../lib/readingLog';
+import { ReadingRecordModal } from '../components/ReadingRecordModal';
 import { removeBookKeepHistory } from '../lib/bookUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
@@ -30,6 +32,9 @@ export default function BookDetail() {
   const [isShareable, setIsShareable] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [record, setRecord] = useState<(ReadingRecordInput & { day: string }) | null>(null);
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [savingRecord, setSavingRecord] = useState(false);
 
   useEffect(() => {
     async function fetchBookData() {
@@ -56,6 +61,7 @@ export default function BookDetail() {
           const ubData = ubs.docs[0].data();
           setUserBook({ id: ubs.docs[0].id, ...ubData });
           setPagesRead(ubData.pagesRead || 0);
+          setRecord(await getReadingRecord(user.uid, id));
         }
       } catch (err) {
         console.error(err);
@@ -77,8 +83,14 @@ export default function BookDetail() {
       const is100 = finalProgress >= 100;
       const finalShareable = is100 && isShareable;
 
+      // Só páginas NOVAS (acima do maior progresso já registrado) entram no log diário de XP
+      const effectivePages = Math.min(numPages, book.totalPages || numPages);
+      const prevMax = Number(userBook.maxPagesRead ?? userBook.pagesRead) || 0;
+      const newMax = user ? await logReadingProgress(user.uid, book.id, effectivePages, prevMax) : prevMax;
+
       await updateDoc(doc(db, 'user_books', userBook.id), {
         pagesRead: numPages,
+        maxPagesRead: newMax,
         progress: finalProgress,
         status: newStatus
       });
@@ -107,12 +119,30 @@ export default function BookDetail() {
       }
 
       alert('Progresso salvo com sucesso!');
-      setUserBook({ ...userBook, pagesRead: numPages, progress: finalProgress, status: newStatus });
+      setUserBook({ ...userBook, pagesRead: numPages, maxPagesRead: newMax, progress: finalProgress, status: newStatus });
+      if (newStatus === 'Lido' && !record) setShowRecordModal(true);
     } catch (err) {
       console.error(err);
       alert('Erro ao salvar progresso.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveRecord = async (input: ReadingRecordInput) => {
+    if (!user || !book) return;
+    setSavingRecord(true);
+    try {
+      await saveReadingRecord(user.uid, book.id, input);
+      setRecord(await getReadingRecord(user.uid, book.id));
+      await syncUserGamificationStats(user.uid);
+      setShowRecordModal(false);
+      alert('Leitura registrada! ⭐ Seu bônus de conclusão foi contabilizado.');
+    } catch (err) {
+      console.error(err);
+      alert('Não foi possível salvar o registro. Tente novamente.');
+    } finally {
+      setSavingRecord(false);
     }
   };
 
@@ -424,9 +454,35 @@ export default function BookDetail() {
                       {isSaving ? 'Salvando...' : 'Salvar'}
                     </button>
                   </div>
+
+                  {userBook.status === 'Lido' && (
+                    <div className="pt-2 border-t border-surface-variant/60 flex items-center justify-between gap-3">
+                      <p className="text-sm text-on-surface-variant">
+                        {record
+                          ? <>Leitura registrada: {'⭐'.repeat(record.rating)}</>
+                          : 'Registre sua leitura para ganhar o bônus de conclusão.'}
+                      </p>
+                      <button
+                        onClick={() => setShowRecordModal(true)}
+                        className="shrink-0 bg-tertiary-container text-on-tertiary-container font-label-lg py-2 px-4 rounded-2xl shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                      >
+                        {record ? 'Editar registro' : 'Registrar leitura'}
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {showRecordModal && (
+              <ReadingRecordModal
+                bookTitle={book.title}
+                initial={record}
+                saving={savingRecord}
+                onSave={handleSaveRecord}
+                onClose={() => setShowRecordModal(false)}
+              />
+            )}
 
             {/* Sharing / Advanced Section */}
             {userBook && (

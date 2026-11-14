@@ -14,6 +14,16 @@ export async function clearAllUserData(userId: string) {
     const ubSnap = await getDocs(ubQuery);
     await Promise.all(ubSnap.docs.map(d => deleteDoc(doc(db, 'user_books', d.id))));
 
+    // 1b. Delete reading logs and reading records (XP history) for this user
+    for (const col of ['reading_logs', 'reading_records']) {
+      try {
+        const snap = await getDocs(query(collection(db, col), where('userId', '==', userId)));
+        await Promise.all(snap.docs.map(d => deleteDoc(doc(db, col, d.id))));
+      } catch (err) {
+        console.warn(`Note clearing ${col}:`, err);
+      }
+    }
+
     // 2. Delete books owned by this user
     const booksQuery = query(collection(db, 'books'), where('ownerId', '==', userId));
     const booksSnap = await getDocs(booksQuery);
