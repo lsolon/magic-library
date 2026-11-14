@@ -29,6 +29,7 @@ interface Exchange {
   bookCoverUrl?: string;
   status: ExchangeStatus;
   borrowerLinked?: boolean;
+  parentApproval?: 'none' | 'waiting' | 'approved' | 'denied';
   createdAt?: any;
 }
 
@@ -357,12 +358,16 @@ export default function ExchangeChat() {
                 <div className="bg-secondary-container/60 border-b border-outline-variant/30 px-4 py-3">
                   <div className="max-w-[800px] mx-auto flex flex-wrap items-center gap-3 justify-between">
                     <p className="text-xs font-bold text-on-secondary-container">
-                      {isOwner ? `@${selectedExchange.initiatorName} quer pegar "${selectedExchange.bookTitle}" emprestado.` : 'Pedido enviado. Aguardando o dono do livro responder.'}
+                      {selectedExchange.parentApproval === 'waiting'
+                        ? (isOwner
+                          ? `@${selectedExchange.initiatorName} quer pegar "${selectedExchange.bookTitle}". Os pais dele(a) ainda vão autorizar o pedido.`
+                          : 'Pedido enviado. Seus responsáveis precisam autorizar antes de o dono responder.')
+                        : (isOwner ? `@${selectedExchange.initiatorName} quer pegar "${selectedExchange.bookTitle}" emprestado.` : 'Pedido enviado. Aguardando o dono do livro responder.')}
                     </p>
                     <div className="flex gap-2">
                       {isOwner && (
                         <>
-                          <button onClick={handleAccept} disabled={isActing} className="px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer disabled:opacity-50">Aceitar</button>
+                          <button onClick={handleAccept} disabled={isActing || selectedExchange.parentApproval === 'waiting'} className="px-4 py-2 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer disabled:opacity-50">Aceitar</button>
                           <button onClick={handleDecline} disabled={isActing} className="px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant text-xs font-bold cursor-pointer disabled:opacity-50">Recusar</button>
                         </>
                       )}

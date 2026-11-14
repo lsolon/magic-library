@@ -2,7 +2,7 @@
 import { defaultAvatarFor } from '../lib/avatars';
 import type { BandId } from '../lib/bands';
 
-export interface DemoUser { uid: string; displayName: string; email: string; avatar: string; band: BandId; grade: string; role?: 'teacher' | 'student' }
+export interface DemoUser { uid: string; displayName: string; email: string; avatar: string; band: BandId; grade: string; role?: 'teacher' | 'student' | 'guardian' }
 
 const BASE_USERS: DemoUser[] = [
   { uid: 'ana', displayName: 'Ana', email: 'ana@demo.invalid', avatar: 'https://api.dicebear.com/7.x/adventurer/svg?seed=fenix', band: 'fund1', grade: '3º ano' },
@@ -30,20 +30,21 @@ const STUDENT_DEFS: Array<{ uid: string; name: string; avatar: string; pattern: 
 
 const SCHOOL_USERS: DemoUser[] = [
   { uid: 'prof', displayName: 'Profa. Marina', email: 'marina@demo.invalid', avatar: 'https://api.dicebear.com/7.x/lorelei/svg?seed=marina', band: 'fund1', grade: 'Professora', role: 'teacher' },
+  { uid: 'resp', displayName: 'Resp. da Ana', email: 'responsavel@demo.invalid', avatar: 'https://api.dicebear.com/7.x/lorelei/svg?seed=familia', band: 'fund1', grade: 'Responsável', role: 'guardian' },
   ...STUDENT_DEFS.map(d => ({ uid: d.uid, displayName: d.name, email: `${d.uid}@demo.invalid`, avatar: d.avatar, band: 'fund1' as BandId, grade: '5º ano', role: 'student' as const })),
 ];
 
 export const DEMO_USERS: DemoUser[] = __SCHOOL__ ? SCHOOL_USERS : BASE_USERS;
 
-const BOOK_POOL: Array<{ t: string; a: string; c: string; d: string; p: number }> = [
-  { t: 'O Pequeno Príncipe', a: 'Antoine de Saint-Exupéry', c: 'Contos de Fadas', d: 'Iniciante', p: 96 },
-  { t: 'Peter Pan', a: 'J. M. Barrie', c: 'Aventura Épica', d: 'Aventureiro', p: 160 },
-  { t: 'Alice no País das Maravilhas', a: 'Lewis Carroll', c: 'Fantasia', d: 'Aventureiro', p: 128 },
-  { t: 'Reinações de Narizinho', a: 'Monteiro Lobato', c: 'Animais Fantásticos', d: 'Iniciante', p: 112 },
-  { t: 'A Ilha do Tesouro', a: 'R. L. Stevenson', c: 'Aventura Épica', d: 'Mestre', p: 224 },
-  { t: 'As Aventuras de Pinóquio', a: 'Carlo Collodi', c: 'Contos de Fadas', d: 'Iniciante', p: 144 },
-  { t: 'Viagem ao Centro da Lua', a: 'Autora Fictícia', c: 'Espaço', d: 'Aventureiro', p: 180 },
-  { t: 'O Segredo do Farol', a: 'Autor Fictício', c: 'Mistério', d: 'Aventureiro', p: 160 },
+const BOOK_POOL: Array<{ t: string; a: string; c: string; d: string; p: number; r: string }> = [
+  { t: 'O Pequeno Príncipe', a: 'Antoine de Saint-Exupéry', c: 'Contos de Fadas', d: 'Iniciante', p: 96, r: 'Livre' },
+  { t: 'Peter Pan', a: 'J. M. Barrie', c: 'Aventura Épica', d: 'Aventureiro', p: 160, r: '8+' },
+  { t: 'Alice no País das Maravilhas', a: 'Lewis Carroll', c: 'Fantasia', d: 'Aventureiro', p: 128, r: 'Livre' },
+  { t: 'Reinações de Narizinho', a: 'Monteiro Lobato', c: 'Animais Fantásticos', d: 'Iniciante', p: 112, r: 'Livre' },
+  { t: 'A Ilha do Tesouro', a: 'R. L. Stevenson', c: 'Aventura Épica', d: 'Mestre', p: 224, r: '10+' },
+  { t: 'As Aventuras de Pinóquio', a: 'Carlo Collodi', c: 'Contos de Fadas', d: 'Iniciante', p: 144, r: 'Livre' },
+  { t: 'Viagem ao Centro da Lua', a: 'Autora Fictícia', c: 'Espaço', d: 'Aventureiro', p: 180, r: '8+' },
+  { t: 'O Segredo do Farol', a: 'Autor Fictício', c: 'Mistério', d: 'Aventureiro', p: 160, r: '10+' },
 ];
 const NOTES = [
   'Gostei muito do final!', 'Quero ler a continuação.', 'A parte do mistério foi a melhor.', 'Chorei um pouquinho no fim.',
@@ -85,6 +86,7 @@ function buildSchoolSeed(Timestamp: Ts): Record<string, Record<string, any>> {
     out[`usernames/u_${encodeURIComponent(u.displayName.toLowerCase())}`] = { uid: u.uid, displayName: u.displayName };
   });
 
+  const sharedPool: Array<{ id: string; ownerId: string; ownerName: string; title: string }> = [];
   STUDENT_DEFS.forEach((st, si) => {
     const r = rng(1000 + si * 77);
     // cada aluno começa por um livro diferente da lista
@@ -145,14 +147,36 @@ function buildSchoolSeed(Timestamp: Ts): Record<string, Record<string, any>> {
         synopsis: 'Livro usado na demonstração.', totalPages: total, coverUrl: '',
         ownerId: st.uid, ownerName: st.name, currentReaderId: shared ? null : st.uid,
         currentReaderName: shared ? null : st.name, status: shared ? 'available' : 'reading_owner',
-        pagesRead, addedBy: st.uid, addedAt: ts(22)
+        ageRating: b.def.r, pagesRead, addedBy: st.uid, addedAt: ts(22)
       };
+      if (shared) sharedPool.push({ id: b.id, ownerId: st.uid, ownerName: st.name, title: b.def.t });
       out[`user_books/ub_${st.uid}_${k}`] = {
         userId: st.uid, bookId: b.id, status: b.done ? 'Lido' : 'Lendo',
         progress: Math.round((pagesRead / total) * 100), pagesRead, maxPagesRead: pagesRead, addedAt: ts(22)
       };
     });
   });
+
+  // Família da Ana: responsável fictício, com autorização dos pais ligada.
+  out['guardians/resp'] = { childIds: ['ana'] };
+  out['family/ana'] = {
+    guardianIds: ['resp'], childName: 'Ana', clubIds: [CLASS_ID],
+    requireApproval: true, pauseSharing: false, blockedCategories: [], blockedBookIds: []
+  };
+  // Empréstimos de exemplo: pedido da Ana (aguarda os pais), pedido recebido e uma devolução concluída.
+  const ex = (id: string, init: string, initName: string, recv: string, recvName: string, bk: { id: string; title: string },
+    status: string, parentApproval: string, created: number, updated?: number) => {
+    out[`exchanges/${id}`] = {
+      initiatorId: init, initiatorName: initName, initiatorAvatar: '', receiverId: recv, receiverName: recvName,
+      bookId: bk.id, bookTitle: bk.title, bookCoverUrl: '', status, parentApproval,
+      createdAt: ts(created), ...(updated !== undefined ? { updatedAt: ts(updated) } : {})
+    };
+  };
+  const fromBruno = sharedPool.find(b => b.ownerId === 'bruno');
+  const anaBooks = sharedPool.filter(b => b.ownerId === 'ana');
+  if (fromBruno) ex('ex_ana_bruno', 'ana', 'Ana', 'bruno', 'Bruno', fromBruno, 'pending', 'waiting', 0);
+  if (anaBooks[0]) ex('ex_elisa_ana', 'elisa', 'Elisa', 'ana', 'Ana', anaBooks[0], 'completed', 'none', 9, 4);
+  if (anaBooks[1] || anaBooks[0]) ex('ex_davi_ana', 'davi', 'Davi', 'ana', 'Ana', anaBooks[1] || anaBooks[0], 'pending', 'none', 1);
 
   out[`clubs/${CLASS_ID}`] = {
     name: `${CLASS_NAME} · Biblioteca da Turma`, description: 'Livros compartilhados entre os alunos da turma (fictícia).',

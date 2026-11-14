@@ -27,3 +27,25 @@ export function useIsTeacher(): { isTeacher: boolean; loading: boolean } {
 
   return state;
 }
+
+/** Responsável (users/{uid}.role === 'guardian'); definido só pela escola/administrador. */
+export function useIsGuardian(): { isGuardian: boolean; loading: boolean } {
+  const { user } = useAuth();
+  const [state, setState] = useState({ isGuardian: false, loading: true });
+
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      if (!user) { setState({ isGuardian: false, loading: false }); return; }
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (!off) setState({ isGuardian: snap.exists() && snap.data().role === 'guardian', loading: false });
+      } catch {
+        if (!off) setState({ isGuardian: false, loading: false });
+      }
+    })();
+    return () => { off = true; };
+  }, [user?.uid]);
+
+  return state;
+}

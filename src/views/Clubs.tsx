@@ -13,6 +13,7 @@ import {
   serverTimestamp, arrayUnion, getDoc, setDoc, onSnapshot 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { getFamily, isBookBlocked, FamilySettings } from '../lib/family';
 import { useAuth } from '../contexts/AuthContext';
 import { syncUserGamificationStats } from '../lib/gamification';
 import { logReadingProgress } from '../lib/readingLog';
@@ -91,6 +92,8 @@ export default function Clubs() {
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'available' | 'unavailable' | 'mine'>('all');
+  const [family, setFamily] = useState<FamilySettings | null>(null);
+  useEffect(() => { if (user) getFamily(user.uid).then(setFamily); }, [user?.uid]);
 
   // Progress modal & owner decision states
   const [selectedBookForProgress, setSelectedBookForProgress] = useState<SharedBook | null>(null);
@@ -506,6 +509,10 @@ export default function Clubs() {
       alert('Este livro não está disponível no momento.');
       return;
     }
+    if (isBookBlocked(family, book)) {
+      alert('Este livro não está liberado para você pela sua família.');
+      return;
+    }
 
     try {
       // Já existe um pedido meu em aberto para este livro? Só abre o chat.
@@ -527,6 +534,7 @@ export default function Clubs() {
         bookTitle: book.title,
         bookCoverUrl: book.coverUrl || '',
         status: 'pending',
+        parentApproval: family?.requireApproval ? 'waiting' : 'none',
         createdAt: serverTimestamp()
       });
 
@@ -593,7 +601,7 @@ export default function Clubs() {
     setTimeout(() => setCopiedCode(false), 2500);
   };
 
-  const filteredBooks = books.filter(b => {
+  const filteredBooks = books.filter(b => !isBookBlocked(family, b)).filter(b => {
     if (activeFilter === 'available') return b.status === 'available';
     if (activeFilter === 'borrowed') return b.status === 'borrowed' && b.currentReaderId === user?.uid;
     if (activeFilter === 'unavailable') return b.status === 'archived' || b.status === 'unavailable';

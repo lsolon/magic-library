@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { School, Users, CalendarDays, Trophy, Star, Lock, Info, Plus, Minus, BookOpenCheck, Sparkles } from 'lucide-react';
-import { collection, query, where, getDocs, getDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { flagReasonLabel } from '../lib/family';
 import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useIsTeacher } from '../lib/useRole';
@@ -131,6 +132,23 @@ export default function TeacherPanel() {
     return () => { off = true; };
   }, [isTeacher, today]);
 
+  // Livros sinalizados pelas famílias, para a professora decidir (não mostra quem sinalizou).
+  const [flags, setFlags] = useState<Array<{ id: string; bookId: string; bookTitle: string; reason: string }>>([]);
+  const [flagTick, setFlagTick] = useState(0);
+  useEffect(() => {
+    if (!isTeacher) return;
+    getDocs(query(collection(db, 'book_flags'), where('status', '==', 'open')))
+      .then(s => setFlags(s.docs.map(d => ({ id: d.id, ...(d.data() as any) }))))
+      .catch(() => setFlags([]));
+  }, [isTeacher, flagTick]);
+  const reviewFlag = async (f: { id: string; bookId: string }, decision: 'kept' | 'removed') => {
+    try {
+      if (decision === 'removed') await updateDoc(doc(db, 'books', f.bookId), { status: 'archived' });
+      await updateDoc(doc(db, 'book_flags', f.id), { status: decision, reviewedAt: serverTimestamp() });
+      setFlagTick(n => n + 1);
+    } catch (e) { console.error(e); alert('Não foi possível concluir a revisão.'); }
+  };
+
   const changeGoal = async (delta: number) => {
     if (!data) return;
     const next = Math.min(99, Math.max(1, data.cls.goalBooks + delta));
@@ -254,6 +272,25 @@ export default function TeacherPanel() {
             })}
           </div>
         </section>
+
+        {/* Livros sinalizados pelas famílias */}
+        {flags.length > 0 && (
+          <section>
+            <h2 className="font-headline-md text-primary mb-1">Livros sinalizados pelas famílias</h2>
+            <p className="text-xs text-on-surface-variant mb-3">Decida se o livro continua na biblioteca da turma. A família não é identificada.</p>
+            <ul className="space-y-2">
+              {flags.map(f => (
+                <li key={f.id} className="rounded-2xl bg-surface-container-lowest border border-outline-variant/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <span><b>{f.bookTitle}</b><br /><span className="text-xs text-on-surface-variant">{flagReasonLabel(f.reason)}</span></span>
+                  <span className="flex gap-2">
+                    <button onClick={() => reviewFlag(f, 'kept')} className="px-3 py-1.5 rounded-xl bg-surface-container-high text-xs font-bold cursor-pointer">Manter</button>
+                    <button onClick={() => reviewFlag(f, 'removed')} className="px-3 py-1.5 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer">Retirar da biblioteca</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Registros */}
         <section>
