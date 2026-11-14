@@ -21,6 +21,8 @@ export interface LoanExchange {
   bookId: string;
   status: ExchangeStatus;
   borrowerLinked?: boolean;
+  /** 'waiting' = aguardando os pais do aluno que pediu; o dono só pode aceitar depois de 'approved'/'none'. */
+  parentApproval?: 'none' | 'waiting' | 'approved' | 'denied';
 }
 
 const sys = (exchangeId: string, systemKind: string) => ({
@@ -30,6 +32,7 @@ const sys = (exchangeId: string, systemKind: string) => ({
 
 /** Dono aprova: livro vira emprestado ao aluno; outros pedidos pendentes do mesmo livro são recusados. */
 export async function acceptLoan(ex: LoanExchange, borrowerName: string): Promise<void> {
+  if (ex.parentApproval === 'waiting' || ex.parentApproval === 'denied') throw new Error('PARENT_APPROVAL_PENDING');
   const bookSnap = await getDoc(doc(db, 'books', ex.bookId));
   if (!bookSnap.exists() || bookSnap.data().status !== 'available') {
     throw new Error('BOOK_UNAVAILABLE');

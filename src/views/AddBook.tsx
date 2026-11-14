@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { syncUserGamificationStats } from '../lib/gamification';
 import { logReadingProgress } from '../lib/readingLog';
+import { AGE_RATINGS, sharingPaused } from '../lib/family';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
@@ -22,6 +23,7 @@ export default function AddBook() {
   const [totalPages, setTotalPages] = useState<number | ''>('');
   const [pagesRead, setPagesRead] = useState<number | ''>('');
   const [isAvailableForShare, setIsAvailableForShare] = useState(false);
+  const [ageRating, setAgeRating] = useState<string>('Livre');
   const [synopsis, setSynopsis] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -46,20 +48,22 @@ export default function AddBook() {
     setError('');
 
     try {
+      const shareNow = isAvailableForShare && !(await sharingPaused(user.uid));
       // 1. Save the book to the global books collection
       const bookRef = await addDoc(collection(db, 'books'), {
         title,
         author,
         category,
         difficulty,
+        ageRating,
         synopsis,
         totalPages: Number(totalPages) || 0,
         coverUrl: coverUrl || '', // No default, BookCoverCard will handle it
         ownerId: user.uid,
         ownerName: user.displayName || 'Explorador(a) de Mundos',
-        currentReaderId: (status === 'Lido' || (status === 'Lendo' && Number(pagesRead) >= Number(totalPages))) && isAvailableForShare ? null : user.uid,
-        currentReaderName: (status === 'Lido' || (status === 'Lendo' && Number(pagesRead) >= Number(totalPages))) && isAvailableForShare ? null : user.displayName || 'Explorador(a) de Mundos',
-        status: (status === 'Lido' || (status === 'Lendo' && Number(pagesRead) >= Number(totalPages))) && isAvailableForShare ? 'available' : 'reading_owner',
+        currentReaderId: (status === 'Lido' || (status === 'Lendo' && Number(pagesRead) >= Number(totalPages))) && shareNow ? null : user.uid,
+        currentReaderName: (status === 'Lido' || (status === 'Lendo' && Number(pagesRead) >= Number(totalPages))) && shareNow ? null : user.displayName || 'Explorador(a) de Mundos',
+        status: (status === 'Lido' || (status === 'Lendo' && Number(pagesRead) >= Number(totalPages))) && shareNow ? 'available' : 'reading_owner',
         addedBy: user.uid,
         addedAt: serverTimestamp()
       });
@@ -222,6 +226,18 @@ export default function AddBook() {
                   </select>
                 </div>
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-label-lg text-on-surface-variant ml-1 block">Para qual idade é este livro?</label>
+              <select
+                value={ageRating}
+                onChange={(e) => setAgeRating(e.target.value)}
+                className="w-full bg-surface-container-highest border-2 border-surface-variant rounded-xl py-3 px-4 font-body-md text-on-surface focus:outline-none focus:border-primary"
+              >
+                {AGE_RATINGS.map(r => <option key={r} value={r}>{r === 'Livre' ? 'Livre (todas as idades)' : `${r} anos`}</option>)}
+              </select>
+              <p className="text-xs text-on-surface-variant ml-1">A professora confere a faixa etária dos livros novos.</p>
             </div>
 
             <div className="space-y-1">

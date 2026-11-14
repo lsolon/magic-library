@@ -17,6 +17,7 @@ import { TopBar } from '../components/TopBar';
 import { BookCoverCard } from '../components/BookCoverCard';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { sharingPaused } from '../lib/family';
 
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>();
@@ -81,7 +82,7 @@ export default function BookDetail() {
       const finalProgress = calculatedProgress > 100 ? 100 : calculatedProgress;
       const newStatus = finalProgress >= 100 ? 'Lido' : 'Lendo';
       const is100 = finalProgress >= 100;
-      const finalShareable = is100 && isShareable;
+      const finalShareable = is100 && isShareable && !(user && await sharingPaused(user.uid));
 
       // Só páginas NOVAS (acima do maior progresso já registrado) entram no log diário de XP
       const effectivePages = Math.min(numPages, book.totalPages || numPages);
@@ -153,6 +154,12 @@ export default function BookDetail() {
       const isOwner = book.ownerId === user.uid;
       if (!isOwner) {
         alert('Apenas o proprietário do livro pode alterar o compartilhamento.');
+        return;
+      }
+
+      if (newShareValue && await sharingPaused(user.uid)) {
+        alert('🔒 O compartilhamento de livros está pausado pela sua família.');
+        setIsSaving(false);
         return;
       }
 

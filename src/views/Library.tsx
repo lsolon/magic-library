@@ -1,4 +1,5 @@
 import { linkAcceptedLoans } from '../lib/loans';
+import { enforcePauseSharing } from '../lib/family';
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Star, Plus, BookOpen, Trash2, Users, Share2, Handshake, Compass, Sparkles, Lock, Bookmark } from 'lucide-react';
@@ -49,6 +50,7 @@ export default function Library() {
       try {
         // 0. Empréstimos aprovados pelo dono entram na estante
         await linkAcceptedLoans(user.uid).catch(e => console.error('link loans', e));
+        await enforcePauseSharing(user.uid, user.displayName || 'Explorador(a) de Mundos').catch(e => console.error('pause', e));
         // 1. Fetch books in user_books
         const q = query(collection(db, 'user_books'), where('userId', '==', user.uid));
         const querySnapshot = await getDocs(q);

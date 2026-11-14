@@ -12,6 +12,77 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
 
+    // ---- Área do responsável ----
+    // Papéis e vínculos (guardians, family) só são gravados pelo administrador/escola.
+    function isTeacher() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'teacher';
+    }
+    // O usuário logado é responsável vinculado à criança `child`?
+    function isGuardianOfChild(child) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/family/$(child))
+        && request.auth.uid in get(/databases/$(database)/documents/family/$(child)).data.guardianIds;
+    }
+    function familyOf(child) {
+      return get(/databases/$(database)/documents/family/$(child)).data;
+    }
+    function familyPaused(child) {
+      return exists(/databases/$(database)/documents/family/$(child))
+        && familyOf(child).get('pauseSharing', false) == true;
+    }
+    function familyRequiresApproval(child) {
+      return exists(/databases/$(database)/documents/family/$(child))
+        && familyOf(child).get('requireApproval', false) == true;
+    }
+    // Livro bloqueado para a criança (por livro ou por categoria).
+    function blockedFor(child, bookId, category) {
+      return exists(/databases/$(database)/documents/family/$(child))
+        && (bookId in familyOf(child).get('blockedBookIds', [])
+            || category in familyOf(child).get('blockedCategories', []));
+    }
+
+    // Responsável: lista de filhos vinculados. Só o administrador grava.
+    match /guardians/{guardianId} {
+      allow read: if signedIn() && (request.auth.uid == guardianId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Configurações da família por criança. A criança lê (para aplicá-las) mas não altera;
+    // o responsável altera só as quatro configurações; vínculo (guardianIds, clubIds) é do administrador.
+    match /family/{childId} {
+      allow read: if signedIn() && (request.auth.uid == childId || request.auth.uid in resource.data.guardianIds || isAdmin());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid in resource.data.guardianIds
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['requireApproval', 'pauseSharing', 'blockedCategories', 'blockedBookIds'])
+            && request.resource.data.requireApproval is bool
+            && request.resource.data.pauseSharing is bool
+            && request.resource.data.blockedCategories is list
+            && request.resource.data.blockedBookIds is list
+            && request.resource.data.blockedCategories.size() <= 30
+            && request.resource.data.blockedBookIds.size() <= 200);
+    }
+
+    // Sinalização de livro pelo responsável: motivo de uma lista (sem texto livre).
+    // A professora (ou admin) decide: manter ou retirar. A criança nunca lê.
+    // Lista de motivos igual a FLAG_REASONS em src/lib/family.ts.
+    match /book_flags/{flagId} {
+      allow read: if signedIn() && (resource.data.flaggedBy == request.auth.uid || isTeacher() || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['bookId', 'bookTitle', 'bookOwnerId', 'flaggedBy', 'childUid', 'reason', 'status', 'createdAt'])
+        && request.resource.data.flaggedBy == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.reason in ['idade', 'violencia', 'linguagem', 'valores', 'outro']
+        && isGuardianOfChild(request.resource.data.childUid)
+        && request.resource.data.createdAt == request.time;
+      allow update: if (isTeacher() || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt'])
+        && request.resource.data.status in ['kept', 'removed'];
+      allow delete: if false;
+    }
+
     // Perfil privado: só o dono e o admin leem (tem e-mail e nome real).
     // O cliente não pode se dar assinatura nem estender o teste (isSubscribed, createdAt);
     // a assinatura só deve ser gravada por servidor/admin.
@@ -56,13 +127,23 @@ service cloud.firestore {
     // devolução mexem no status), mas ninguém troca o dono nem apaga livro alheio.
     match /books/{bookId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid;
+      // Se a família pausou o compartilhamento, a criança não cria livro já público.
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid
+        && (request.resource.data.get('status', '') != 'available' || !familyPaused(request.auth.uid));
       // Dono altera o livro (sem trocar de dono). Quem está com o livro emprestado
       // só pode atualizar a página lida (nunca status, leitor atual ou dono).
       allow update: if signedIn()
         && request.resource.data.ownerId == resource.data.ownerId
         && (
-          resource.data.ownerId == request.auth.uid
+          (resource.data.ownerId == request.auth.uid
+            && (request.resource.data.get('status', '') != 'available'
+                || resource.data.get('status', '') == 'available'
+                || !familyPaused(request.auth.uid)))
+          // professora retira da biblioteca um livro sinalizado (só 'available' -> 'archived')
+          || (isTeacher()
+              && resource.data.get('status', '') == 'available'
+              && request.resource.data.status == 'archived'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
           || (resource.data.get('currentReaderId', null) == request.auth.uid
               && resource.data.get('status', '') == 'borrowed'
               && request.resource.data.diff(resource.data).affectedKeys()
@@ -81,7 +162,7 @@ service cloud.firestore {
     // Log diário de leitura (páginas novas por dia): só o dono grava e lê (admin também lê).
     // Só cresce: não há update; o dono pode apagar (limpar dados). Dia no formato AAAA-MM-DD.
     match /reading_logs/{logId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isGuardianOfChild(resource.data.userId) || isAdmin());
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['userId', 'bookId', 'day', 'pages', 'createdAt'])
         && request.resource.data.userId == request.auth.uid
@@ -117,7 +198,10 @@ service cloud.firestore {
     // Grupos: só os membros leem. Entrar = acrescentar a si mesmo (o código vive em
     // club_codes e só quem o conhece descobre o id do grupo). Só o dono altera o resto.
     match /clubs/{clubId} {
-      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      // Responsável lê (get) o grupo dos filhos vinculados para ver a biblioteca do grupo.
+      allow read: if signedIn() && (request.auth.uid in resource.data.members
+        || (exists(/databases/$(database)/documents/guardians/$(request.auth.uid))
+            && resource.data.members.hasAny(get(/databases/$(database)/documents/guardians/$(request.auth.uid)).data.childIds)));
 
       allow create: if signedIn()
         && request.resource.data.ownerId == request.auth.uid
@@ -157,7 +241,11 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/books/$(d.bookId)).data;
       }
 
-      allow read, delete: if signedIn() && isParty(resource.data);
+      allow delete: if signedIn() && isParty(resource.data);
+      // Responsável acompanha os empréstimos dos filhos vinculados (só leitura).
+      allow read: if signedIn() && (isParty(resource.data)
+        || isGuardianOfChild(resource.data.initiatorId)
+        || isGuardianOfChild(resource.data.receiverId));
 
       // Criar: só como solicitante, para o dono real do livro, como pedido ('pending')
       // de livro disponível ou como conversa simples ('chat').
@@ -169,7 +257,12 @@ service cloud.firestore {
         && (
           request.resource.data.status == 'chat'
           || (request.resource.data.status == 'pending'
-              && bookOf(request.resource.data).status == 'available')
+              && bookOf(request.resource.data).status == 'available'
+              // livro bloqueado pela família não pode ser pedido
+              && !blockedFor(request.auth.uid, request.resource.data.bookId, bookOf(request.resource.data).get('category', ''))
+              // com autorização dos pais ligada, o pedido nasce 'waiting'
+              && request.resource.data.get('parentApproval', 'none')
+                   == (familyRequiresApproval(request.auth.uid) ? 'waiting' : 'none'))
         );
 
       // Atualizar: só status/borrowerLinked/updatedAt/completedAt; identidades e livro fixos.
@@ -189,7 +282,9 @@ service cloud.firestore {
               && resource.data.status == 'pending'
               && (request.resource.data.status == 'declined'
                   || (request.resource.data.status == 'accepted'
-                      && bookOf(resource.data).status == 'available')))
+                      && bookOf(resource.data).status == 'available'
+                      // sem autorização pendente/negada dos pais de quem pediu
+                      && resource.data.get('parentApproval', 'none') in ['none', 'approved'])))
           // aluno cancela o próprio pedido
           || (resource.data.initiatorId == request.auth.uid
               && resource.data.status == 'pending'
@@ -203,6 +298,17 @@ service cloud.firestore {
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['borrowerLinked'])
             || (resource.data.initiatorId == request.auth.uid
                 && request.resource.data.status == 'accepted'));
+
+      // Responsável autoriza ou recusa o pedido do filho (só enquanto aguarda: 'waiting').
+      allow update: if signedIn()
+        && isGuardianOfChild(resource.data.initiatorId)
+        && resource.data.status == 'pending'
+        && resource.data.get('parentApproval', 'none') == 'waiting'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parentApproval', 'status', 'updatedAt'])
+        && (
+          (request.resource.data.parentApproval == 'approved' && request.resource.data.status == 'pending')
+          || (request.resource.data.parentApproval == 'denied' && request.resource.data.status == 'declined')
+        );
 
       // Mensagens: o chat não tem texto livre. Cada mensagem guarda só um código
       // (presetId do aluno, ou systemKind do sistema); o texto vem do app.

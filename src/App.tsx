@@ -15,8 +15,9 @@ import AddBook from './views/AddBook';
 import Landing from './views/Landing';
 import SetupProfile from './views/SetupProfile';
 import Maintenance from './views/Maintenance';
-import { useIsTeacher } from './lib/useRole';
+import { useIsTeacher, useIsGuardian } from './lib/useRole';
 
+const GuardianPanel = React.lazy(() => import('./views/GuardianPanel'));
 const TeacherPanel = __SCHOOL__ ? React.lazy(() => import('./views/TeacherPanel')) : null;
 
 // Demonstração: HashRouter (funciona em pasta estática) e seletor de aluno.
@@ -27,9 +28,10 @@ const DemoSwitcher = __DEMO__ ? React.lazy(() => import('./demo/DemoSwitcher')) 
 function SchoolHome() {
   const { user, loading } = useAuth();
   const { isTeacher, loading: roleLoading } = useIsTeacher();
-  if (loading || roleLoading) return null;
+  const { isGuardian, loading: guardianLoading } = useIsGuardian();
+  if (loading || roleLoading || guardianLoading) return null;
   if (!user) return <Navigate to="/register" replace />;
-  return <Navigate to={isTeacher ? '/professor' : '/dashboard'} replace />;
+  return <Navigate to={isTeacher ? '/professor' : isGuardian ? '/responsavel' : '/dashboard'} replace />;
 }
 
 // Mude para false para desativar o modo de manutenção
@@ -65,6 +67,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={__SCHOOL__ ? <SchoolHome /> : __DEMO__ ? <Navigate to="/dashboard" replace /> : <Landing />} />
           {TeacherPanel && <Route path="/professor" element={<ProtectedRoute><React.Suspense fallback={null}><TeacherPanel /></React.Suspense></ProtectedRoute>} />}
+          <Route path="/responsavel" element={<ProtectedRoute><React.Suspense fallback={null}><GuardianPanel /></React.Suspense></ProtectedRoute>} />
           <Route path="/register" element={<Register />} />
           <Route path="/setup-profile" element={<ProtectedRoute><SetupProfile /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
