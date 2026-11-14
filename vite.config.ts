@@ -28,7 +28,9 @@ export default defineConfig(({ mode }) => {
   const basePath = env.VITE_BASE_PATH || '/';
   const build = getBuildInfo();
   // Build de demonstração: troca o Firebase por um banco/login de mentira (src/demo/*).
-  const demo = env.VITE_DEMO === 'true';
+  // Build da escola (/escola/): demonstração com dados fictícios + painel do professor.
+  const school = env.VITE_SCHOOL === 'true';
+  const demo = env.VITE_DEMO === 'true' || school;
   const demoAlias = demo ? [
     { find: /^firebase\/firestore$/, replacement: path.resolve(__dirname, 'src/demo/fakeFirestore.ts') },
     { find: /^firebase\/auth$/, replacement: path.resolve(__dirname, 'src/demo/fakeAuth.ts') },
@@ -40,6 +42,7 @@ export default defineConfig(({ mode }) => {
     define: {
       __APP_VERSION__: JSON.stringify(build.label),
       __DEMO__: JSON.stringify(demo),
+      __SCHOOL__: JSON.stringify(school),
     },
     plugins: [
       react(),

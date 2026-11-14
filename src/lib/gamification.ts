@@ -46,7 +46,7 @@ export function dayKey(date: Date = new Date()): string {
 }
 
 /** Segunda-feira (AAAA-MM-DD) da semana de um dia. */
-function weekStart(day: string): string {
+export function weekStart(day: string): string {
   const [y, m, d] = day.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   const dow = (dt.getUTCDay() + 6) % 7; // segunda = 0

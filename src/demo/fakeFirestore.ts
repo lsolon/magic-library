@@ -5,7 +5,8 @@
  */
 import { buildSeed } from './seed';
 
-const STORE_KEY = 'ml-demo-db-v2';
+const STORE_KEY = __SCHOOL__ ? 'ml-school-db-v1' : 'ml-demo-db-v2';
+const todayStr = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
 export class Timestamp {
   constructor(public seconds: number, public nanoseconds = 0) {}
@@ -45,7 +46,12 @@ export function resetDemoDb() {
 (function init() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) { docs = new Map((JSON.parse(raw) as [string, Data][]).map(([k, v]) => [k, decode(v)])); return; }
+    if (raw) {
+      docs = new Map((JSON.parse(raw) as [string, Data][]).map(([k, v]) => [k, decode(v)]));
+      // Escola: os dados são datados em relação a "hoje"; se o dia mudou, recria para o painel ficar atual.
+      if (__SCHOOL__ && docs.get('meta/seed')?.day !== todayStr()) resetDemoDb();
+      return;
+    }
   } catch { /* ignora */ }
   resetDemoDb();
 })();
