@@ -13,6 +13,7 @@ import { db } from '../lib/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
+import { useChatUnread, markChatSeen } from '../lib/chatUnread';
 import { acceptLoan, declineLoan, cancelLoan, completeLoan, linkAcceptedLoans, ExchangeStatus } from '../lib/loans';
 import { CHAT_PRESETS, CHAT_PRESET_BY_ID, CHAT_PRESET_GROUPS, systemMessageText, ChatPreset } from '../lib/chatPresets';
 
@@ -58,6 +59,7 @@ export default function ExchangeChat() {
   const [openGroup, setOpenGroup] = useState<ChatPreset['group']>('combinar');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const unreadIds = useChatUnread(user?.uid).ids;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -151,6 +153,11 @@ export default function ExchangeChat() {
       } as ChatMessage));
 
       setMessages(fetched);
+      // Conversa aberta e aba visível: tudo o que chegou conta como visto
+      if (user && fetched.length && document.visibilityState === 'visible') {
+        const last: any = fetched[fetched.length - 1];
+        markChatSeen(user.uid, selectedExchange.id, last.createdAt?.toMillis ? last.createdAt.toMillis() : Date.now());
+      }
       setTimeout(scrollToBottom, 100);
     }, (err) => {
       console.error('Error fetching chat messages:', err);
@@ -292,7 +299,10 @@ export default function ExchangeChat() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-on-surface truncate">@{otherName}</span>
+                        <span className="font-bold text-xs text-on-surface truncate flex items-center gap-1.5">
+                          {unreadIds.has(ex.id) && <span className="w-2.5 h-2.5 rounded-full bg-error shrink-0" aria-label="Mensagem nova" />}
+                          @{otherName}
+                        </span>
                         {ex.status === 'completed' && (
                           <span className="text-[10px] bg-tertiary-container text-on-tertiary-container px-1.5 py-0.5 rounded font-bold">Concluído</span>
                         )}
