@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Trash2, AlertTriangle, Book, Flame, Timer, Package, Crown, Compass } from 'lucide-react';
+import { User, Sparkles, Award, Star, Shield, Save, Camera, ArrowLeft, Lock, Trash2, AlertTriangle, Book, Flame, Timer, Package, Crown, Compass, Calendar, Handshake } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { TopBar } from '../components/TopBar';
 import { BottomNav } from '../components/BottomNav';
@@ -8,7 +8,11 @@ import { VersionBadge } from '../components/VersionBadge';
 import { AVATAR_PRESETS, safeAvatar } from '../lib/avatars';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { syncUserGamificationStats, calculateBadges, getLevelInfo, EMPTY_STATS, NEW_GENRE_XP, BadgeDef, GamificationStats } from '../lib/gamification';
+import {
+  syncUserGamificationStats, calculateBadges, getLevelInfo, EMPTY_STATS, BadgeDef, GamificationStats,
+  DAILY_PAGE_XP_CAP, READING_DAY_MIN_PAGES, READING_DAY_XP, WEEK_MIN_DAYS, WEEK_XP,
+  COMPLETION_BASE_XP, COMPLETION_MAX_XP, NEW_GENRE_XP, LOAN_XP, MAX_LOANS_PER_MONTH
+} from '../lib/gamification';
 import { clearAllUserData } from '../lib/dataUtils';
 
 export default function Profile() {
@@ -208,6 +212,12 @@ export default function Profile() {
                 </div>
               </div>
 
+              {/* Constância da semana */}
+              <div className="w-full mt-3 flex items-center justify-between text-xs rounded-xl bg-surface-container px-3 py-2 border border-surface-variant">
+                <span className="text-on-surface-variant flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-primary" /> Dias de leitura esta semana</span>
+                <span className="font-bold text-primary">{stats.daysThisWeek} / {WEEK_MIN_DAYS}</span>
+              </div>
+
               {/* Ranking Explanation Accordion/Card */}
               <div className="w-full mt-4 p-4 rounded-xl bg-primary-container/20 border border-primary-container/50 text-left space-y-2 text-xs">
                 <div className="font-bold text-primary flex items-center justify-between">
@@ -217,10 +227,13 @@ export default function Profile() {
                   Seu Nível, XP e Estrelas crescem quando você lê e termina livros. Só cadastrar livros não dá XP!
                 </p>
                 <ul className="space-y-1.5 text-on-surface text-[11px] list-disc list-inside">
-                  <li><strong>+1 XP:</strong> Por cada página lida e registrada</li>
-                  <li><strong>+50 XP (e mais um pouco):</strong> Ao terminar um livro ("Lido"). Livros maiores rendem um bônus extra, até 100 XP</li>
-                  <li><strong>+{NEW_GENRE_XP} XP:</strong> No primeiro livro terminado de cada gênero novo</li>
-                  <li><strong>⭐️ Estrelas:</strong> 1 por livro lido, 1 a cada 500 páginas lidas e 1 a cada 5 livros lidos</li>
+                  <li><strong>+1 XP por página lida</strong>, até {DAILY_PAGE_XP_CAP} XP de páginas por dia</li>
+                  <li><strong>+{READING_DAY_XP} XP</strong> em cada dia em que você lê pelo menos {READING_DAY_MIN_PAGES} páginas</li>
+                  <li><strong>+{WEEK_XP} XP</strong> por semana em que você lê em {WEEK_MIN_DAYS} dias ou mais</li>
+                  <li><strong>+{COMPLETION_BASE_XP} XP (e mais um pouco)</strong> ao terminar um livro e registrar sua leitura. Livros maiores rendem um bônus extra, até {COMPLETION_MAX_XP} XP</li>
+                  <li><strong>+{NEW_GENRE_XP} XP</strong> no primeiro livro terminado de cada gênero novo</li>
+                  <li><strong>+{LOAN_XP} XP</strong> por empréstimo concluído com um colega (até {MAX_LOANS_PER_MONTH} por mês)</li>
+                  <li><strong>⭐️ Estrelas:</strong> 1 por livro terminado com registro, 1 a cada 500 páginas e 1 a cada 5 livros terminados</li>
                   <li><strong>🛡️ Nível Mágico:</strong> Cada nível pede um pouco mais de XP que o anterior. Quanto mais você lê, mais longe chega!</li>
                 </ul>
               </div>
@@ -258,6 +271,8 @@ export default function Profile() {
                                badge.iconType === 'timer' ? Timer :
                                badge.iconType === 'package' ? Package :
                                badge.iconType === 'compass' ? Compass :
+                               badge.iconType === 'calendar' ? Calendar :
+                               badge.iconType === 'handshake' ? Handshake :
                                badge.iconType === 'crown' ? Crown : Award;
                   return (
                     <div key={badge.id} className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${badge.achieved ? 'bg-primary-container/20 border-primary/30 shadow-sm' : 'bg-surface-container border-surface-variant opacity-60 grayscale'}`}>
