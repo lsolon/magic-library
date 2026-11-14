@@ -32,6 +32,13 @@ jobs:
           VITE_BASE_PATH: /magic-library/demo/
           VITE_DEMO: 'true'
 
+      # Escola (demonstração com dados fictícios + painel do professor) em /magic-library/escola/
+      - name: Build escola
+        run: npx vite build --outDir dist/escola --emptyOutDir false
+        env:
+          VITE_BASE_PATH: /magic-library/escola/
+          VITE_SCHOOL: 'true'
+
       - name: Deploy via SCP
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -51,7 +58,7 @@ jobs:
           script: |
             set -e
             cd /var/www/approutinetech/dist/magic-library
-            chmod -R 755 assets demo
+            chmod -R 755 assets demo escola
             npm install --omit=dev
             pm2 restart magic-library || pm2 start server.cjs --name magic-library
             pm2 save
