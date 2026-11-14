@@ -4,10 +4,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { safeAvatar } from '../lib/avatars';
 import { cn } from '../lib/utils';
 import { useBand } from '../lib/useBand';
+import { useChatUnread } from '../lib/chatUnread';
 
 export function TopBar(props: any) {
   const { user, userAvatar, logout } = useAuth();
   const homeLabel = useBand().copy.navHome;
+  const unread = useChatUnread(user?.uid).count;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -64,7 +66,12 @@ export function TopBar(props: any) {
                     : 'text-on-surface-variant hover:text-primary hover:bg-surface-container'
                 )}
               >
-                <Icon className="w-5 h-5" />
+                <span className="relative">
+                  <Icon className="w-5 h-5" />
+                  {item.path === '/chat' && unread > 0 && (
+                    <span aria-label={`${unread} conversa(s) com mensagem nova`} className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-error text-on-error text-[10px] font-bold flex items-center justify-center">{unread}</span>
+                  )}
+                </span>
                 <span className="hidden lg:inline">{item.label}</span>
               </Link>
             )

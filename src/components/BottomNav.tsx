@@ -2,10 +2,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { Compass, BookOpen, Package, User, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useBand } from '../lib/useBand';
+import { useAuth } from '../contexts/AuthContext';
+import { useChatUnread } from '../lib/chatUnread';
 
 export function BottomNav() {
   const location = useLocation();
   const homeLabel = useBand().copy.navHome;
+  const { user } = useAuth();
+  const unread = useChatUnread(user?.uid).count;
 
   const navItems = [
     { path: '/dashboard', icon: Compass, label: homeLabel },
@@ -32,7 +36,12 @@ export function BottomNav() {
                 : 'text-on-surface-variant opacity-70 hover:bg-secondary-fixed-dim/20 active:scale-95'
             )}
           >
-            <Icon className="w-5 h-5 mb-1" />
+            <span className="relative">
+              <Icon className="w-5 h-5 mb-1" />
+              {item.path === '/chat' && unread > 0 && (
+                <span aria-label={`${unread} conversa(s) com mensagem nova`} className="absolute -top-2 -right-3 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-error text-[10px] font-bold flex items-center justify-center">{unread}</span>
+              )}
+            </span>
             <span className="font-label-lg mt-0.5 text-[10px] leading-tight text-center">{item.label}</span>
           </Link>
         );
